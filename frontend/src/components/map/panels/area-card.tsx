@@ -4,7 +4,8 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
-import { Loader2, MapPin, MessageSquareText, Route, X } from "lucide-react";
+import { setFilterAnimationTimeConfig, setFilterAnimationWindow, setFilterView, toggleFilterAnimation, wrapTo } from "@kepler.gl/actions";
+import { Loader2, MapPin, MessageSquareText, Pause, Play, Route, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
@@ -48,6 +49,9 @@ const PER_TOWER_SAMPLE = 6;
 const MAX_TOWERS_SAMPLED = 25;
 
 const TRAIL_EVENT = "menara:trail-open";
+const TRAIL_DATA = "trail_moves";
+const TRAIL_FILTER = "trail_time";
+
 
 export type Section = "towers" | "subscribers" | "usage";
 
@@ -130,6 +134,7 @@ export function AreaCard({
   const [trail, setTrail] = useState<{ hash: string; segments: Segment[] } | null>(null);
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [trailBusy, setTrailBusy] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
   const cardId = useId();
 
   // one trail card on the page: when another chat card opens a trail, this one closes its own
@@ -237,6 +242,8 @@ export function AreaCard({
   const closeTrail = () => {
     setTrail(null);
     setRoutines(null);
+    setPlaying(false);
+    // removing the dataset also removes its time filter and the playback bar
     removeOurs(["trail_"]);
   };
 
@@ -259,14 +266,7 @@ export function AreaCard({
       setRoutines(routineReply.routines ?? []);
       setTrailBusy(null);
       removeOurs(["trail_"]);
-      await addPoints("trail_stops", "Trail stops", segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })), TRAIL_COLOR, STOP_RADIUS);
-      await addLines(
-        "trail_lines",
-        "Trail",
-        segments.slice(1).map((s, i) => ({ lat0: segments[i].cell_lat, lng0: segments[i].cell_lng, lat1: s.cell_lat, lng1: s.cell_lng })),
-        TRAIL_COLOR,
-        3,
-      );
+      await drawTrailPlayback(segments);
       for (const kind of ["home", "weekday", "weekend"] as const) {
         const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
         await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, ROUTINE_RADIUS);
@@ -282,6 +282,66 @@ export function AreaCard({
       setTrailBusy(null);
       setError(e instanceof Error ? e.message : String(e));
     }
+  };
+
+  /**
+   * The trail as one dataset, one row per cell visit with its arrival time: a point layer for the stops and a line layer
+   * for the move from the previous stop. A time filter on the arrival time gives kepler's time playback bar at the bottom
+   * of the map; the "incremental" window keeps the start fixed, so the trail grows as it plays.
+   */
+  const drawTrailPlayback = async (segments: Segment[]) => {
+    if (!segments.length) return;
+    const rows = segments.map((s, i) => ({
+      order: i + 1,
+      cell: s.serving_cell,
+      tower: s.enodeb_name,
+      // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
+      arrived_at: s.arrived_at,
+      stay_min: Math.round(s.duration_min),
+      lat: s.cell_lat,
+      lng: s.cell_lng,
+      lat0: i ? segments[i - 1].cell_lat : s.cell_lat,
+      lng0: i ? segments[i - 1].cell_lng : s.cell_lng,
+    }));
+    await runKeplerCommand(store, MAP_ID, "load_data", { rows, label: "Subscriber trail", dataId: TRAIL_DATA, centerMap: false, autoCreateLayers: false });
+    await runKeplerCommand(store, MAP_ID, "add_layer", {
+      dataId: TRAIL_DATA,
+      type: "line",
+      label: "Trail moves",
+      columns: { lat0: "lat0", lng0: "lng0", lat1: "lat", lng1: "lng" },
+      color: TRAIL_COLOR,
+      opacity: 0.9,
+      visConfig: { thickness: 3 },
+    });
+    await runKeplerCommand(store, MAP_ID, "add_layer", { dataId: TRAIL_DATA, type: "point", label: "Trail stops", columns: { lat: "lat", lng: "lng" }, color: TRAIL_COLOR, radius: STOP_RADIUS });
+    const times = segments.map((s) => Date.parse(s.arrived_at));
+    const start = Math.min(...times);
+    // one minute past the last arrival, so the last stop is inside the range
+    const end = Math.max(...times) + 60_000;
+    try {
+      await runKeplerCommand(store, MAP_ID, "add_filter", { dataId: TRAIL_DATA, field: "arrived_at", filterId: TRAIL_FILTER, value: [start, end] });
+      const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID].visState.filters;
+      const idx = filters.findIndex((f) => f.id === TRAIL_FILTER);
+      if (idx >= 0) {
+        // the compact playback bar at the bottom of the map, in Malaysia time
+        store.dispatch(wrapTo(MAP_ID, setFilterView(idx, "minified")));
+        store.dispatch(wrapTo(MAP_ID, setFilterAnimationTimeConfig(idx, { timezone: "Asia/Kuala_Lumpur" })));
+        store.dispatch(wrapTo(MAP_ID, setFilterAnimationWindow({ id: TRAIL_FILTER, animationWindow: "incremental" })));
+        store.dispatch(wrapTo(MAP_ID, toggleFilterAnimation(idx)));
+        setPlaying(true);
+      }
+    } catch (e) {
+      // the trail still shows without playback
+      console.warn("[trail] time playback unavailable", e);
+    }
+  };
+
+  const togglePlayback = () => {
+    const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID]?.visState.filters ?? [];
+    const idx = filters.findIndex((f) => f.id === TRAIL_FILTER);
+    if (idx < 0) return;
+    store.dispatch(wrapTo(MAP_ID, toggleFilterAnimation(idx)));
+    setPlaying((p) => !p);
   };
 
   const counts = (status: string) => area?.towers.filter((t) => t.status === status).length ?? 0;
@@ -420,16 +480,25 @@ export function AreaCard({
             <div
               role="dialog"
               aria-label={`Trail of subscriber ${trail.hash.slice(0, 8)}`}
-              className="fixed right-4 bottom-10 z-[60] flex max-h-[60vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
+              className="fixed right-4 bottom-44 z-[60] flex max-h-[52vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
             >
               <div className="flex items-center gap-1.5">
                 <Route className="size-3.5 text-muted-foreground" />
                 <h3 className="text-[13px] font-medium">Trail of {trail.hash.slice(0, 8)}</h3>
                 <span className="text-[11px] text-muted-foreground">cells only, 24 h</span>
-                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="ml-auto rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                <button
+                  type="button"
+                  onClick={togglePlayback}
+                  aria-label={playing ? "Pause the trail playback" : "Play the trail"}
+                  className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />} {playing ? "Pause" : "Play"}
+                </button>
+                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                   <X className="size-3.5" />
                 </button>
               </div>
+              <p className="text-[11px] text-muted-foreground">Replays on the map with the time bar at the bottom: drag it, or change the speed there.</p>
               <ol className="flex flex-col gap-0.5 text-[12px]">
                 {trail.segments.map((s, i) => (
                   <li key={`${s.arrived_at}-${i}`} className="flex gap-2 rounded px-1.5 py-0.5">
