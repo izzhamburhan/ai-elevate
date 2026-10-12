@@ -191,7 +191,7 @@ export function AdherenceBanner({ adherence, areaLabel, pending }: { adherence: 
   if (!adherence) return null;
   const text = {
     respected: `Every successful tool call stayed inside “${areaLabel}”.`,
-    "partly respected": `Only ${adherence.inArea} of ${adherence.calls.length} tool calls stayed inside “${areaLabel}”; the rest queried ${adherence.unscoped ? "the wider network" : "outside the area"}. Findings are not limited to the area.`,
+    "partly respected": `${adherence.inArea} of ${adherence.calls.length} tool calls stayed strictly inside “${areaLabel}”.${adherence.beyond ? ` ${adherence.beyond} radius search(es) were centred inside but reached beyond the area.` : ""}${adherence.outside ? ` ${adherence.outside} queried outside it.` : ""}${adherence.unscoped ? ` ${adherence.unscoped} used no location (wider network).` : ""} Findings are not strictly limited to the area.`,
     "not area-scoped": `The agents' tool calls did not filter by “${areaLabel}”. Do not read the findings as an analysis of this area.`,
     "no tool calls": `No successful tool calls were recorded, so nothing about “${areaLabel}” was analysed.`,
   }[adherence.verdict];
@@ -212,7 +212,7 @@ export function InvestigationResults({ job, digest, rows, adherence, areaLabel, 
 }) {
   const [tab, setTab] = useState<Tab>("summary");
   const [onlyFocus, setOnlyFocus] = useState(true);
-  const shown = focusRows && onlyFocus ? focusRows : rows;
+  const shown = focusRows?.length && onlyFocus ? focusRows : rows; // an empty filter would hide every row
   const tabs: { id: Tab; label: string; icon: typeof FileText }[] = [
     { id: "summary", label: "Summary", icon: Sparkles }, { id: "evidence", label: `Evidence (${rows.length})`, icon: Gauge }, { id: "report", label: "Report", icon: FileText },
   ];
@@ -263,7 +263,7 @@ export function InvestigationResults({ job, digest, rows, adherence, areaLabel, 
 
       {tab === "evidence" ? (
         <div className="space-y-1.5">
-          {focusRows ? (
+          {focusRows?.length ? (
             <label className="flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={onlyFocus} onChange={(e) => setOnlyFocus(e.target.checked)} />Only rows near {focusName}</label>
           ) : null}
           {shown.length ? (
@@ -308,7 +308,7 @@ export function InvestigationResults({ job, digest, rows, adherence, areaLabel, 
               <li>Agents: {digest.agents.map((a) => AGENT_META[a as HermesAgentId]?.label ?? a).join(", ")} (local Hermes profiles, persistent memory).</li>
               <li>Tools that returned data: {digest.tools.join(", ") || "none"}.</li>
               <li>Sources: {sources.map((s) => `${s.service}/${s.tool}${s.synthetic ? " (synthetic)" : ""}`).join("; ") || "none"}.</li>
-              <li>Area: {areaLabel ? `${areaLabel}; scope ${adherence?.verdict ?? "—"} (${adherence?.inArea ?? 0} in area, ${adherence?.outside ?? 0} outside, ${adherence?.unscoped ?? 0} unscoped calls).` : "none attached."}</li>
+              <li>Area: {areaLabel ? `${areaLabel}; scope ${adherence?.verdict ?? "—"} (${adherence?.inArea ?? 0} strictly inside, ${adherence?.beyond ?? 0} reaching beyond, ${adherence?.outside ?? 0} outside, ${adherence?.unscoped ?? 0} unscoped calls).` : "none attached."}</li>
               <li>Investigation {job.investigation_id} · started {myt(job.created_at)} · updated {myt(job.updated_at)} MYT.</li>
             </ul>
           </section>

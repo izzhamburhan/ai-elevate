@@ -91,13 +91,15 @@ export function withAreaContext(prompt: string, area: MapArea | null, siteIds: s
 }
 
 /** The area a saved investigation was asked about, read back from its prompt (null when it had none). */
-export function areaFromPrompt(prompt: string): (Omit<MapArea, "ring"> & { siteIds: string[] }) | null {
+export function areaFromPrompt(prompt: string): (MapArea & { siteIds: string[] }) | null {
   const at = prompt.indexOf(AREA_MARKER);
   if (at < 0) return null;
   const line = prompt.slice(at).split("\n")[1];
   try {
     const c = JSON.parse(line) as { kind: MapArea["kind"]; label: string; center: LatLng; radius_km: number; bbox: MapArea["bbox"]; site_ids: string[] };
-    return { kind: c.kind, label: c.label, center: c.center, radiusKm: c.radius_km, bbox: c.bbox, siteIds: c.site_ids ?? [] };
+    const [w, so, e, n] = c.bbox;
+    const ring = c.kind === "rectangle" ? [[w, so], [e, so], [e, n], [w, n], [w, so]] : undefined;
+    return { kind: c.kind, label: c.label, center: c.center, radiusKm: c.radius_km, bbox: c.bbox, siteIds: c.site_ids ?? [], ...(ring ? { ring } : {}) };
   } catch {
     return null;
   }
@@ -119,7 +121,8 @@ export type JobLike = {
   geojson?: { features: { geometry: { coordinates: [number, number] }; properties: Record<string, unknown> }[] } | null;
   warnings?: string[]; feasibility?: unknown;
 };
-export type CallScope = "in_area" | "outside" | "unscoped";
+/** in_area: provably inside; beyond: centred inside but the search circle reaches past the area; outside; unscoped: no location. */
+export type CallScope = "in_area" | "beyond" | "outside" | "unscoped";
 
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN);
 function idList(v: unknown): string[] {
@@ -136,15 +139,27 @@ export function callScope(call: ToolCall, area: Pick<MapArea, "center" | "radius
   const lat = num(a.lat ?? a.latitude ?? a.current_lat), lng = num(a.lng ?? a.lon ?? a.longitude ?? a.current_long);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
     const radius = num(a.radius_km ?? a.radius);
-    const inside = area.ring ? inRing(area.ring, lat, lng) : haversineKm(area.center, { lat, lng }) <= area.radiusKm;
-    return inside && (!Number.isFinite(radius) || radius <= area.radiusKm + 1) ? "in_area" : "outside";
+    const r = Number.isFinite(radius) && radius > 0 ? radius : 0;
+    if (area.ring) {
+      if (!inRing(area.ring, lat, lng)) return "outside";
+      // the whole search circle must lie in the shape: sample its edge (24 points)
+      const dLat = r / 111, dLng = r / (111 * Math.cos((lat * Math.PI) / 180));
+      const edgeInside = Array.from({ length: 24 }, (_, i) => (2 * Math.PI * i) / 24)
+        .every((t) => inRing(area.ring!, lat + dLat * Math.sin(t), lng + dLng * Math.cos(t)));
+      return edgeInside ? "in_area" : "beyond";
+    }
+    const d = haversineKm(area.center, { lat, lng });
+    if (d > area.radiusKm) return "outside";
+    // a polygon known only by its bounding box cannot prove a radius search stays inside it
+    if (area.kind === "polygon" && r > 0) return "beyond";
+    return d + r <= area.radiusKm + 1e-9 ? "in_area" : "beyond";
   }
   return "unscoped";
 }
 
 export type Adherence = {
   verdict: "respected" | "partly respected" | "not area-scoped" | "no tool calls";
-  inArea: number; outside: number; unscoped: number;
+  inArea: number; beyond: number; outside: number; unscoped: number;
   calls: { agent: string; tool: string; scope: CallScope }[];
 };
 
@@ -154,9 +169,9 @@ export function areaAdherence(job: JobLike, area: Pick<MapArea, "center" | "radi
   const calls = job.tasks.flatMap((t) => (t.tool_calls ?? []).filter((c) => c.ok === true && c.tool !== "delegate_specialist")
     .map((c) => ({ agent: t.agent_id, tool: c.tool, scope: callScope(c, area, ids) })));
   const count = (s: CallScope) => calls.filter((c) => c.scope === s).length;
-  const inArea = count("in_area"), outside = count("outside"), unscoped = count("unscoped");
+  const inArea = count("in_area"), beyond = count("beyond"), outside = count("outside"), unscoped = count("unscoped");
   const verdict = !calls.length ? "no tool calls" : inArea === calls.length ? "respected" : inArea > 0 ? "partly respected" : "not area-scoped";
-  return { verdict, inArea, outside, unscoped, calls };
+  return { verdict, inArea, beyond, outside, unscoped, calls };
 }
 
 // ---------------------------------------------------------------- evidence rows

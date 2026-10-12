@@ -50,7 +50,15 @@ test("tool calls are judged by the sites or the radius they actually queried", (
   assert.equal(callScope({ tool: "get_ran_kpi", arguments: { site_id: "IN1,IN2" } }, area, ids), "in_area");
   assert.equal(callScope({ tool: "get_ran_kpi", arguments: { site_id: "IN1,OUT1" } }, area, ids), "outside");
   assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.071, current_long: 101.511, radius: 1 } }, area, ids), "in_area");
-  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.071, current_long: 101.511, radius: 25 } }, area, ids), "outside");
+  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.071, current_long: 101.511, radius: 25 } }, area, ids), "beyond");
+  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.30, current_long: 101.70, radius: 1 } }, area, ids), "outside");
+  // the verified Shah Alam case: a 3 km search centred inside a ~2 km-radius rectangle reaches past it
+  const rect = areaFromShape("Rectangle", [[101.5085, 3.0533], [101.5332, 3.0533], [101.5332, 3.0784], [101.5085, 3.0784], [101.5085, 3.0533]], "rect");
+  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.07006, current_long: 101.518799, radius: 3 } }, rect, ids), "beyond");
+  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.0658, current_long: 101.5209, radius: 0.5 } }, rect, ids), "in_area");
+  // reopened from the prompt, the rectangle keeps its exact shape
+  const back = areaFromPrompt(withAreaContext("x", rect, ["IN1"]));
+  assert.equal(callScope({ tool: "get_ntt_tickets", arguments: { current_lat: 3.07006, current_long: 101.518799, radius: 3 } }, back, ids), "beyond");
   assert.equal(callScope({ tool: "get_worst_cells", arguments: { region: "Central" } }, area, ids), "unscoped");
 });
 
@@ -59,6 +67,9 @@ test("the area verdict never claims more than the recorded calls show", () => {
   const ok = (args) => ({ tool: "get_ran_kpi", ok: true, arguments: args });
   assert.equal(areaAdherence(job([ok({ site_id: "IN1" })]), area, ["IN1"]).verdict, "respected");
   assert.equal(areaAdherence(job([ok({ site_id: "IN1" }), ok({ region: "Central" })]), area, ["IN1"]).verdict, "partly respected");
+  const mixed = areaAdherence(job([ok({ site_id: "IN1" }), ok({ current_lat: 3.07, current_long: 101.51, radius: 3 })]), area, ["IN1"]);
+  assert.equal(mixed.verdict, "partly respected");
+  assert.equal(mixed.beyond, 1);
   assert.equal(areaAdherence(job([ok({ region: "Central" })]), area, ["IN1"]).verdict, "not area-scoped");
   // failed calls and delegation do not count as analysis
   assert.equal(areaAdherence(job([{ tool: "get_ran_kpi", ok: false, arguments: { site_id: "IN1" } }, { tool: "delegate_specialist", ok: true }]), area, ["IN1"]).verdict, "no tool calls");
