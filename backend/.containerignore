@@ -1,0 +1,12 @@
+# build context for backend container images: code and lock files only
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+data/
+netops-mcp/data/
+dosm-mcp/data/
+**/*.duckdb
+**/*.db
+.env

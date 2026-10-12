@@ -11,7 +11,10 @@ traffic and no alarms. This generator reads netops.duckdb READ-ONLY and writes a
 - alarm: derived from the outages, plus the scripted scenarios
 - transport_link: microwave sites hang off the nearest fibre site of their cluster (a demo topology)
 - grid_quality: RSRP/RSRQ/SINR per NetOps BIN grid, averaged over the window
-- event, scenario: the reproducible demo scenarios (see SCENARIOS)
+- area: one commercial anchor per NetOps cluster (its best-rated shopping mall from the Overture places, real)
+- event: crowd events at those areas over 180 days plus the next 14 (synthetic); the ones inside the KPI window
+  load the cells facing them
+- scenario: the reproducible demo scenarios (see SCENARIOS)
 
 Times: NetOps timestamps are Malaysia local time (UTC+8, no DST); everything here is stored as naive UTC.
 Same netops.duckdb + same SEED = the same file. Run: `uv run python -m netintel_mcp.seed [--netops-db P] [--out P]`.
@@ -31,9 +34,14 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-GENERATOR_VERSION = "intel-v1"
+GENERATOR_VERSION = "intel-v2"
 SEED = 42
-DAYS = 28
+DAYS = 60  # the NetOps daily KPI window
+EVENT_HISTORY_DAYS = 180
+UPCOMING_DAYS = 14
+PRECURSOR_SHARE = 0.6
+EVENT_CELL_RADIUS_KM = 3.5  # crowds at a venue load the cells that point at it from up to this far
+FACING_DEG = 70
 MYT = timedelta(hours=8)
 STADIUM = ("Stadium Shah Alam", 3.0839, 101.5465)  # public landmark location (approximate)
 
@@ -50,6 +58,17 @@ SCENARIOS = {
     "(loss, latency, throughput) while a microwave maintenance RFC runs on that hub (RFC-INTEL-0001).",
     "SCN-RECURRING-VSWR": "Three sites raise an antenna VSWR alarm every 5-7 days (unstable radio equipment).",
     "SCN-RECURRING-BACKHAUL": "One microwave site degrades for 1-2 hours on four evenings with no maintenance planned.",
+    "SCN-OUTAGE-PRECURSORS": "About 60% of total/partial outages are preceded, 1-3 days earlier, by a few hours of extra packet "
+    "loss and latency and KPI_DEGRADATION warning alarms (a synthetic relationship, so a failure model has something to learn).",
+    "SCN-UPCOMING-EVENT": "A weekend festival at Stadium Shah Alam on the first Saturday after the window (18:00-23:00 MYT, "
+    "38,000 people, synthetic) - the event the forecasts are asked about.",
+}
+EVENT_KINDS = {  # attendance range, start hour range (MYT), duration hours
+    "CONCERT": ((8000, 45000), (19, 21), 4),
+    "MATCH": ((15000, 40000), (16, 21), 3),
+    "FESTIVAL": ((5000, 25000), (10, 18), 6),
+    "SALE": ((3000, 15000), (10, 11), 11),
+    "EXPO": ((4000, 12000), (10, 12), 8),
 }
 
 
@@ -114,6 +133,8 @@ class World:
     complaints: list[dict] = field(default_factory=list)
     alarms: list[dict] = field(default_factory=list)
     events: list[dict] = field(default_factory=list)
+    areas: list[dict] = field(default_factory=list)
+    precursors: list[str] = field(default_factory=list)
     transport: list[dict] = field(default_factory=list)
     scenario_rows: list[dict] = field(default_factory=list)
 
@@ -208,7 +229,7 @@ def _load(netops: duckdb.DuckDBPyConnection, rng: np.random.Generator) -> World:
     )
 
 
-def _apply_records(w: World, netops: duckdb.DuckDBPyConnection) -> None:
+def _apply_records(w: World, netops: duckdb.DuckDBPyConnection, rng: np.random.Generator) -> None:
     """NetOps trouble tickets, planned maintenance and complaints inside the window, applied to the hourly KPIs."""
     window_end = w.start_local + timedelta(days=DAYS)
     rows = netops.execute(
@@ -230,6 +251,8 @@ def _apply_records(w: World, netops: duckdb.DuckDBPyConnection) -> None:
                           "fault_category": category, "description": desc, "source": "netops:ntt_granite"})
         if category not in effects:
             continue
+        if category in ("Total Outage", "Partial Outage") and start >= w.start_local + timedelta(days=3) and rng.random() < PRECURSOR_SHARE:
+            _precursor(w, rng, ntt_no, site_id, start)
         avail, thr, lat, loss, code, severity = effects[category]
         slots = w.hours(start, end)
         for i in w.cell_rows.get(site_id, []):
@@ -272,6 +295,101 @@ def _apply_records(w: World, netops: duckdb.DuckDBPyConnection) -> None:
         w.complaints.append({"complaint_id": str(case), "created_utc": _utc(created), "site_id": site_id, "lat": lat, "lng": lng,
                              "category": ctype, "description": f"{ctype} complaint ({tech})", "netops_root_cause": cause,
                              "source": "netops:THD"})
+
+
+def _precursor(w: World, rng: np.random.Generator, ntt_no: str, site_id: str, start: datetime) -> None:
+    """A few hours of extra loss/latency and warning alarms in the 1-3 days before an outage (SCN-OUTAGE-PRECURSORS)."""
+    lead = int(rng.integers(1, 4))
+    for back in range(lead):
+        day_start = start - timedelta(days=back + 1)
+        for _ in range(int(rng.integers(2, 5))):
+            hour = day_start + timedelta(hours=int(rng.integers(0, 24)))
+            for i in w.cell_rows.get(site_id, []):
+                for d, h in w.hours(hour, hour + timedelta(hours=1)):
+                    w.loss_add[i, d, h] += rng.uniform(0.8, 1.6)
+                    w.lat_add[i, d, h] += rng.uniform(12, 28)
+    for _ in range(int(rng.integers(1, 4))):
+        raised = start - timedelta(hours=int(rng.integers(2, 24 * lead)))
+        w.alarms.append({"site_id": site_id, "cell_name": None, "raised_utc": _utc(raised),
+                         "cleared_utc": _utc(raised + timedelta(minutes=int(rng.integers(30, 90)))), "code": "KPI_DEGRADATION",
+                         "severity": "WARNING", "source": f"precursor:{ntt_no}"})
+    w.precursors.append(ntt_no)
+
+
+def _areas(w: World, places: Path | None) -> None:
+    """One commercial anchor per cluster: its best-rated shopping mall within 4 km of the cluster centre (Overture places)."""
+    malls: list[tuple] = []
+    if places and places.exists():
+        con = duckdb.connect()
+        try:
+            malls = con.execute(
+                "SELECT name, lat, lng, confidence, id FROM read_parquet(?) WHERE category = 'shopping_mall' AND confidence >= 0.8",
+                [str(places)],
+            ).fetchall()
+        finally:
+            con.close()
+    clusters: dict[str, list[dict]] = {}
+    for s in w.sites:
+        clusters.setdefault(s["cluster"], []).append(s)
+    used: set[str] = set()
+    for cluster in sorted(clusters):
+        members = clusters[cluster]
+        clat = sum(s["lat"] for s in members) / len(members)
+        clng = sum(s["lng"] for s in members) / len(members)
+        near = [m for m in malls if m[4] not in used and haversine_km(clat, clng, m[1], m[2]) <= 4]
+        code = "".join(ch for ch in cluster.upper() if ch.isalpha())[:6]
+        if near:
+            name, lat, lng, conf, pid = max(near, key=lambda m: (m[3], -haversine_km(clat, clng, m[1], m[2]), m[0]))
+            used.add(pid)
+            area = {"area_id": f"AREA-{code}", "name": name, "cluster": cluster, "lat": round(lat, 6), "lng": round(lng, 6),
+                    "kind": "mall", "source": f"overture:{pid}"}
+        else:
+            area = {"area_id": f"AREA-{code}", "name": f"{cluster} town centre", "cluster": cluster, "lat": round(clat, 6),
+                    "lng": round(clng, 6), "kind": "centre", "source": "synthetic:cluster-centroid"}
+        w.areas.append(area)
+
+
+def _event_load(w: World, event: dict, start_local: datetime, end_local: datetime) -> None:
+    """A crowd loads the cells within EVENT_CELL_RADIUS_KM that point at it, more when bigger and closer."""
+    lift = min(35.0, event["attendance"] / 1300)
+    for s in w.sites:
+        dist = haversine_km(s["lat"], s["lng"], event["lat"], event["lng"])
+        if dist > EVENT_CELL_RADIUS_KM:
+            continue
+        to_event = bearing_deg(s["lat"], s["lng"], event["lat"], event["lng"])
+        for i in w.cell_rows[s["site_id"]]:
+            off = abs((w.cells[i]["azimuth"] - to_event + 180) % 360 - 180)
+            if dist > 0.3 and off > FACING_DEG:
+                continue
+            for d, h in w.hours(start_local - timedelta(hours=1), end_local + timedelta(hours=1)):
+                w.prb[i, d, h] = min(99.5, w.prb[i, d, h] + lift * (1 - dist / (EVENT_CELL_RADIUS_KM + 0.5)))
+                w.users[i, d, h] *= 1 + lift / 60
+
+
+def _events(w: World, rng: np.random.Generator) -> None:
+    """Crowd events at the areas: 180 days of history, the next 14 days announced; past ones in the KPI window load cells."""
+    window_end = w.start_local + timedelta(days=DAYS)
+    first = window_end - timedelta(days=EVENT_HISTORY_DAYS)
+    last = window_end + timedelta(days=UPCOMING_DAYS)
+    kinds = sorted(EVENT_KINDS)
+    weights = np.array([0.25, 0.15, 0.25, 0.25, 0.10])
+    for area in w.areas:
+        day = first + timedelta(days=int(rng.integers(0, 21)))
+        while day < last:
+            if rng.random() < 0.7:  # most events are at the weekend
+                day += timedelta(days=(5 - day.weekday()) % 7 + int(rng.integers(0, 2)))
+            kind = kinds[int(rng.choice(len(kinds), p=weights / weights.sum()))]
+            (lo, hi), (h0, h1), hours = EVENT_KINDS[kind]
+            start = datetime.combine(day.date(), datetime.min.time()) + timedelta(hours=int(rng.integers(h0, h1 + 1)))
+            end = start + timedelta(hours=hours)
+            lat, lng = offset(area["lat"], area["lng"], rng.uniform(0, 360), rng.uniform(0, 1.0))
+            event = {"event_id": f"EVT-{area['area_id'][5:]}-{start:%Y%m%d}", "name": f"{kind.title()} in {area['cluster']}", "kind": kind,
+                     "lat": lat, "lng": lng, "start_utc": _utc(start), "end_utc": _utc(end), "attendance": int(rng.integers(lo, hi + 1)),
+                     "area_id": area["area_id"], "status": "upcoming" if start >= window_end else "past", "source": "synthetic:events"}
+            w.events.append(event)
+            if start < window_end:
+                _event_load(w, event, start, end)
+            day += timedelta(days=int(rng.integers(21, 43)))
 
 
 def _transport(w: World) -> None:
@@ -329,8 +447,20 @@ def _scenarios(w: World, rng: np.random.Generator) -> None:
             if off <= 60:
                 candidates.append((dist + off / 120, w.cells[i]["cell_name"], i))
     event_cells = [i for _, _, i in sorted(candidates)[:2]]
+    shah_area = next(a["area_id"] for a in w.areas if a["cluster"] == "Shah Alam")
+    w.events = [e for e in w.events if not (e["area_id"] == shah_area and abs((e["start_utc"] - _utc(start)).days) <= 3)]
     w.events.append({"event_id": "EVT-SA-CONCERT", "name": f"Concert at {name}", "kind": "CONCERT", "lat": slat, "lng": slng,
-                     "start_utc": _utc(start), "end_utc": _utc(end), "attendance": 45000, "source": "scenario:SCN-SHAH-ALAM-EVENT"})
+                     "start_utc": _utc(start), "end_utc": _utc(end), "attendance": 45000, "area_id": shah_area, "status": "past",
+                     "source": "scenario:SCN-SHAH-ALAM-EVENT"})
+    # SCN-UPCOMING-EVENT: the weekend after the window
+    window_end = w.start_local + timedelta(days=DAYS)
+    up_day = window_end + timedelta(days=(5 - window_end.weekday()) % 7)
+    up_start = datetime.combine(up_day.date(), datetime.min.time()) + timedelta(hours=18)
+    w.events = [e for e in w.events if not (e["area_id"] == shah_area and abs((e["start_utc"] - _utc(up_start)).days) <= 3)]
+    w.events.append({"event_id": "EVT-SA-FESTIVAL", "name": f"Weekend festival at {name}", "kind": "FESTIVAL", "lat": slat, "lng": slng,
+                     "start_utc": _utc(up_start), "end_utc": _utc(up_start + timedelta(hours=5)), "attendance": 38000, "area_id": shah_area,
+                     "status": "upcoming", "source": "scenario:SCN-UPCOMING-EVENT"})
+    w.scenario_rows.append({"scenario_id": "SCN-UPCOMING-EVENT", "events": ["EVT-SA-FESTIVAL"], "day_local": up_day.date().isoformat()})
     for d, h in w.hours(start - timedelta(hours=1), end + timedelta(hours=1)):
         for i in event_cells:
             w.prb[i, d, h] = min(99.5, w.prb[i, d, h] + 35)
@@ -437,7 +567,7 @@ def _derived(w: World, rng: np.random.Generator, base_sinr: np.ndarray) -> dict[
     }
 
 
-def build(netops_db: Path, out: Path, seed: int = SEED) -> dict[str, int]:
+def build(netops_db: Path, out: Path, seed: int = SEED, places: Path | None = None) -> dict[str, int]:
     rng = np.random.default_rng(seed)
     # DuckDB allows one writer; read a private copy so a running NetOps server is never disturbed
     with tempfile.TemporaryDirectory() as tmp:
@@ -446,9 +576,12 @@ def build(netops_db: Path, out: Path, seed: int = SEED) -> dict[str, int]:
         netops = duckdb.connect(str(copy), read_only=True)
         try:
             w = _load(netops, rng)
-            _apply_records(w, netops)
+            _apply_records(w, netops, rng)
             _transport(w)
+            _areas(w, places if places is not None else netops_db.parent / "places_my.parquet")
+            _events(w, rng)
             _scenarios(w, rng)
+            w.scenario_rows.append({"scenario_id": "SCN-OUTAGE-PRECURSORS", "outages": sorted(w.precursors)})
             grid = netops.execute(
                 'SELECT k."Grid_ID", any_value(b.latitude), any_value(b.longitude), avg(k.avg_rsrp), avg(k.avg_rsrq), avg(k.sinr), '
                 'avg(k.cqi), sum(k."SampleNO"), mode(k."CellName") FROM "BinKPI" k JOIN "Bin_Information" b USING ("Grid_ID") '
@@ -487,7 +620,8 @@ def build(netops_db: Path, out: Path, seed: int = SEED) -> dict[str, int]:
         _write(db, "maintenance", w.maintenance)
         _write(db, "complaint", w.complaints)
         _write(db, "alarm", sorted(w.alarms, key=lambda a: (a["raised_utc"], a["site_id"], a["code"])))
-        _write(db, "event", w.events)
+        _write(db, "event", sorted(w.events, key=lambda e: (e["start_utc"], e["event_id"])))
+        _write(db, "area", w.areas)
         _write(db, "transport_link", w.transport)
         db.execute(
             "CREATE TABLE grid_quality (grid_id BIGINT, lat DOUBLE, lng DOUBLE, rsrp_dbm DOUBLE, rsrq_db DOUBLE, sinr_db DOUBLE, "
@@ -509,7 +643,8 @@ def build(netops_db: Path, out: Path, seed: int = SEED) -> dict[str, int]:
         db.execute("CREATE TABLE meta (key VARCHAR PRIMARY KEY, value VARCHAR)")
         db.executemany("INSERT INTO meta VALUES (?, ?)", sorted(meta.items()))
         counts = {t: db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in
-                  ("site", "cell", "kpi_hourly", "outage", "maintenance", "complaint", "alarm", "event", "transport_link", "grid_quality", "scenario")}
+                  ("site", "cell", "kpi_hourly", "outage", "maintenance", "complaint", "alarm", "event", "area", "transport_link", "grid_quality",
+                   "scenario")}
     finally:
         db.close()
     os.replace(tmp_out, out)
@@ -531,6 +666,21 @@ def _write(db: duckdb.DuckDBPyConnection, table: str, rows: list[dict]) -> None:
     db.execute(f"CREATE TABLE {table} AS SELECT * FROM data")
 
 
+def current_version(path: Path) -> str | None:
+    """The generator version recorded in an existing intel.duckdb, or None."""
+    if not path.exists():
+        return None
+    try:
+        con = duckdb.connect(str(path), read_only=True)
+        try:
+            row = con.execute("SELECT value FROM meta WHERE key = 'generator_version'").fetchone()
+        finally:
+            con.close()
+    except duckdb.Error:
+        return None
+    return row[0] if row else None
+
+
 def default_paths() -> tuple[Path, Path]:
     backend = Path(__file__).resolve().parents[3]
     return backend / "netops-mcp" / "data" / "netops.duckdb", Path(os.environ.get("NETINTEL_DB", backend / "data" / "intel.duckdb"))
@@ -542,7 +692,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--netops-db", type=Path, default=netops_default)
     parser.add_argument("--out", type=Path, default=out_default)
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--if-stale", action="store_true", help="only build when the file is missing or from an older generator")
     args = parser.parse_args(argv)
+    if args.if_stale and current_version(args.out) == GENERATOR_VERSION:
+        return
     if not args.netops_db.exists():
         raise SystemExit(f"netops.duckdb not found at {args.netops_db}; seed NetOps first (python run_all.py netops)")
     args.out.parent.mkdir(parents=True, exist_ok=True)

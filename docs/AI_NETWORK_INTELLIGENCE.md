@@ -61,8 +61,8 @@ Every tool returns the Menara envelope:
   "data": {
     "summary": "...",                        // one paragraph, factual
     "geojson": { "type": "FeatureCollection", "features": [ ... ] },
-    "provenance": { "dataset": "...", "generator_version": "intel-v1", "seed": "42", "netops_ref_date": "2026-10-12",
-                    "window_days_local": "2026-09-14..2026-10-11", "synthetic": true, "method": "rule-based ..." },
+    "provenance": { "dataset": "...", "generator_version": "intel-v2", "seed": "42", "netops_ref_date": "2026-10-12",
+                    "window_days_local": "2026-08-13..2026-10-11", "synthetic": true, "method": "rule-based ..." },
     "data_freshness": { "data_end": { "utc": "...Z", "myt": "...+08:00" }, "live": false, "note": "..." },
     "limitations": [ "..." ],
     "...": "tool-specific fields below"
@@ -131,16 +131,16 @@ How it works:
 
 **Example** (real output, shortened). Input: `{"complaint_id": "CMP-SA-0001", "hour_from": 19, "hour_to": 22}`.
 
-> Most likely cause: congestion (high). The customer is served by CB5348_Shah Alam_011 (0.43 km away), which averaged 92% PRB between 19:00 and 22:59 MYT over the last 28 days against 44% at other times.
+> Most likely cause: congestion (high). The customer is served by CB5348_Shah Alam_011 (0.32 km away), which averaged 92% PRB between 19:00 and 22:59 MYT over the last 28 days against 44% at other times.
 
 | Cause | Likelihood | Evidence |
 |---|---|---|
-| congestion | high | throughput 8.0 Mbps against 16.7 Mbps in other hours (52% lower); 28 of 28 days above 85% PRB |
+| congestion | high | throughput 8.2 Mbps against 16.6 Mbps in other hours (51% lower); 28 of 28 days above 85% PRB |
 | coverage | low | RSRP −87.5 dBm (good) |
 
 Recommendations:
 - **P1:** add a carrier or split the sector on CB5348_Shah Alam_011.
-- **P2:** shift load to CK1617, which runs at 51% PRB in the same hours.
+- **P2:** shift load to CK1617, which runs at 52% PRB in the same hours.
 
 ### `analyze_network_congestion`
 
@@ -268,20 +268,21 @@ Hermes connects to `http://127.0.0.1:8125/mcp` (streamable HTTP). With `--search
 
 Agent profiles, SOUL.md, memory and orchestration belong to the Hermes developer. This server only provides tools.
 
-## Synthetic data (`intel.duckdb`, generator `intel-v1`, seed 42)
+## Synthetic data (`intel.duckdb`, generator `intel-v2`, seed 42)
 
 | Table | Rows (real NetOps seed) | Content |
 |---|---|---|
 | `site`, `cell` | 472, 2,405 | copied from `Site4G` / `Cell4G` (IDs, coordinates, backhaul, exchange, morphology, azimuth) |
-| `kpi_hourly` | 1,616,160 | 28 days × 24 hours per 4G cell, 2026-09-14 to 2026-10-11 (Malaysia time) |
-| `outage` | 94 | NetOps `ntt_granite` tickets in the window, plus scenario tickets |
-| `maintenance` | 96 | NetOps `Webe_Plan_Maintenance` in the window, plus `RFC-INTEL-0001` |
-| `complaint` | 181 | NetOps `THD` in the window, plus 6 scenario complaints |
-| `alarm` | 103 | derived from outages (`S1_LINK_LOST`, `CELL_UNAVAILABLE`, `KPI_DEGRADATION`), plus scenarios |
+| `kpi_hourly` | 3,463,200 | 60 days × 24 hours per 4G cell, 2026-08-13 to 2026-10-11 (Malaysia time): the NetOps daily KPI window |
+| `outage` | 186 | NetOps `ntt_granite` tickets in the window, plus scenario tickets |
+| `maintenance` | 193 | NetOps `Webe_Plan_Maintenance` in the window, plus `RFC-INTEL-0001` |
+| `complaint` | 379 | NetOps `THD` in the window, plus 6 scenario complaints |
+| `alarm` | 354 | derived from outages (`S1_LINK_LOST`, `CELL_UNAVAILABLE`, `KPI_DEGRADATION`), outage precursors, plus scenarios |
 | `transport_link` | 118 | each microwave site is fed by the nearest fibre site in its cluster (a demo assumption) |
 | `grid_quality` | 579 | NetOps `BinKPI` RSRP/RSRQ/SINR/CQI per grid, averaged over the window |
-| `event` | 1 | the Shah Alam concert (synthetic attendance) |
-| `scenario`, `meta` | 5, 9 | scenario descriptions, generator version, seed, window, NetOps reference date |
+| `area` | 38 | one commercial anchor per NetOps cluster: its best-rated shopping mall in the Overture places (real locations) |
+| `event` | 229 | crowd events at the areas over 180 days plus the next 14 (synthetic). Past ones inside the KPI window load the cells within 3.5 km that point at them; `status` is `past` or `upcoming` |
+| `scenario`, `meta` | 7, 9 | scenario descriptions, generator version, seed, window, NetOps reference date |
 
 **How the hourly KPIs are made.**
 - **PRB load.** Each hourly value is the cell's NetOps daily PRB times an hour-of-day profile (residential, business or mixed by `RFP_Morphology`, weekday or weekend), with 5% noise. The daily mean follows NetOps, and a test checks it within 4 points.
@@ -308,6 +309,8 @@ Agent profiles, SOUL.md, memory and orchestration belong to the Hermes developer
 | `SCN-TRANSPORT-HUB` | On 26 Sep, 14:00–18:00, three microwave sites on hub CB3550 degrade during `RFC-INTEL-0001` on the hub, with `MW_LINK_DEGRADED` and `HIGH_PACKET_LOSS` alarms and degradation tickets. |
 | `SCN-RECURRING-VSWR` | Three fibre sites raise `VSWR_HIGH` every 5–7 days. |
 | `SCN-RECURRING-BACKHAUL` | One microwave site degrades for 1–2 hours on four evenings, with no maintenance planned. |
+| `SCN-OUTAGE-PRECURSORS` | About 60% of total/partial outages are preceded, 1–3 days earlier, by a few hours of extra loss and latency and `KPI_DEGRADATION` warnings. This relationship is synthetic; it gives the Order 5 failure model something to learn. |
+| `SCN-UPCOMING-EVENT` | `EVT-SA-FESTIVAL`: a 38,000-person festival at Stadium Shah Alam on Saturday 17 Oct, 18:00–23:00 MYT, after the window. Used by the Order 5 forecasts. |
 
 **Provenance.**
 - NetOps network data is synthetic (NetOps seed 42).
@@ -325,10 +328,10 @@ Run from `backend/`: `uv run pytest netintel-mcp`. The tests use a small fake `n
 | Check | Result |
 |---|---|
 | Generator is deterministic (same input and seed give identical tables; checked on the real NetOps seed and in tests) | PASS |
-| Hourly rows cover every cell for 28 days; times are UTC (midnight MYT is 16:00 UTC) | PASS |
+| Hourly rows cover every cell for the 60-day window; times are UTC (midnight MYT is 16:00 UTC) | PASS |
 | Daily mean PRB follows NetOps (within 4 points) | PASS |
 | A NetOps total outage takes the site off air for its hours | PASS |
-| The five scenarios are present in the data | PASS |
+| The seven scenarios are present in the data | PASS |
 | Complaint `CMP-SA-0001` gives congestion (high) on the right cell, good signal, and a capacity action | PASS |
 | Congestion ranks the evening sector CRITICAL/HIGH with its busy hour at 19–23 | PASS |
 | Correlation finds the three sites, the shared hub (strong) and the window 26 Sep 14:00 MYT | PASS |
@@ -351,3 +354,4 @@ Run from `backend/`: `uv run pytest netintel-mcp`. The tests use a small fake `n
 - "Now" is the end of the synthetic window (2026-10-12 00:00 MYT), not the wall clock.
 - Weather ML covers six cached locations. A site uses the nearest one within 50 km, so the result is coarse, and the replay window may not overlap a given incident.
 - 4G only: NetOps 5G cells have daily KPIs, but the hourly extension covers the 2,405 4G cells.
+- `intel-v2` (Order 5) widened the window from 28 to 60 days and added areas, an event history and outage precursors. The tools still look back at most 28 days by default.

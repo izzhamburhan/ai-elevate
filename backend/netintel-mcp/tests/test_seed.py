@@ -22,12 +22,12 @@ def test_same_input_and_seed_give_the_same_data(netops_db: Path, intel_db: Path,
         assert a.execute(query).fetchone() == b.execute(query).fetchone(), table
 
 
-def test_hourly_rows_cover_every_cell_for_28_days(intel_db: Path) -> None:
+def test_hourly_rows_cover_every_cell_for_the_window(intel_db: Path) -> None:
     con = _con(intel_db)
     cells = con.execute("SELECT count(*) FROM cell").fetchone()[0]
-    assert con.execute("SELECT count(*) FROM kpi_hourly").fetchone()[0] == cells * 28 * 24
+    assert con.execute("SELECT count(*) FROM kpi_hourly").fetchone()[0] == cells * seed.DAYS * 24
     first, last = con.execute("SELECT min(ts_utc), max(ts_utc) FROM kpi_hourly").fetchone()
-    assert (last - first).total_seconds() == (28 * 24 - 1) * 3600
+    assert (last - first).total_seconds() == (seed.DAYS * 24 - 1) * 3600
     # local midnight of the first day is 16:00 UTC the day before
     assert first.hour == 16
 

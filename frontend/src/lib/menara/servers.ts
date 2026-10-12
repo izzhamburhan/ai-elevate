@@ -27,6 +27,7 @@ export const MENARA_SERVERS = [
   { key: "sensors", name: "Sensors", port: 8120, description: "Smart-city sensors and early-warning alerts." },
   { key: "scam", name: "Scam", port: 8121, description: "Scam hotspots (counts only) and how many customers a shield would protect." },
   { key: "netintel", name: "Network Intelligence", port: 8125, description: "Investigate complaints, congestion, incidents across sites, weather exposure and maintenance, with evidence and a map layer." },
+  { key: "mlpredict", name: "Predictive ML", port: 8126, description: "Local ML forecasts: footfall, booth locations, site outage risk, congestion and anomalies." },
   { key: "demo", name: "Demo", port: 8124, description: "Scenario clock and reset: move time forward so slow things can finish." },
 ] as const;
 

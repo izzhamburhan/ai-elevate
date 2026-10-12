@@ -1,0 +1,1 @@
+"""Local ML predictions for AI Elevate: footfall, booth locations, site failure risk, congestion forecast, anomalies."""

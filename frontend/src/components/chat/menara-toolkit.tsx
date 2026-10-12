@@ -171,13 +171,18 @@ export const menaraToolkit = defineToolkit({
     ]),
   ),
   // the same tools reached through BM25 search mode (run_all starts servers with --search)
-  netintel_call_tool: {
-    type: "backend",
-    display: "standalone",
-    render: ({ args, result }) => {
-      const name = (args as { name?: string } | undefined)?.name;
-      if (!name || !(INTEL_TOOLS as readonly string[]).includes(name)) return null;
-      return result ? <IntelCard tool={name as IntelTool} result={result} /> : <Working text="Analysing the network…" />;
-    },
-  },
+  ...Object.fromEntries(
+    ["netintel_call_tool", "mlpredict_call_tool"].map((caller) => [
+      caller,
+      {
+        type: "backend" as const,
+        display: "standalone" as const,
+        render: ({ args, result }: { args?: unknown; result?: unknown }) => {
+          const name = (args as { name?: string } | undefined)?.name;
+          if (!name || !(INTEL_TOOLS as readonly string[]).includes(name)) return null;
+          return result ? <IntelCard tool={name as IntelTool} result={result} /> : <Working text="Analysing the network…" />;
+        },
+      },
+    ]),
+  ),
 });

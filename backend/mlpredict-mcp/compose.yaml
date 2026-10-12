@@ -1,0 +1,34 @@
+# Predictive ML MCP on Podman (works with `podman compose` or podman-compose).
+#   cd backend/mlpredict-mcp
+#   podman compose -p ai-elevate-ml up -d --build       # serve on 127.0.0.1:8126
+#   podman compose -p ai-elevate-ml run --rm train      # rebuild data/models if stale (writes backend/data)
+#   podman compose -p ai-elevate-ml down                # stop (data and models stay in backend/data)
+# Do not run it together with `python run_all.py mlpredict`: both use port 8126 (set MLPREDICT_HOST_PORT to move it).
+name: ai-elevate-ml
+
+services:
+  mlpredict:
+    build:
+      context: ..
+      dockerfile: mlpredict-mcp/Containerfile
+    image: ai-elevate-mlpredict:0.1.0
+    ports:
+      - "127.0.0.1:${MLPREDICT_HOST_PORT:-8126}:8126"
+    volumes:
+      - ../data:/data:ro
+    mem_limit: 1g
+    cpus: 2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8126), 3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+
+  train:
+    image: ai-elevate-mlpredict:0.1.0
+    profiles: ["train"]
+    volumes:
+      - ../data:/data
+    command: >
+      sh -c "python -m mlpredict_mcp.data --if-stale && python -m mlpredict_mcp.train --if-stale"

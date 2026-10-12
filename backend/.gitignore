@@ -11,3 +11,6 @@ data/menara.db-shm
 data/intel.duckdb
 data/intel.duckdb.wal
 data/intel.tmp.duckdb
+data/ml.duckdb
+data/ml.tmp.duckdb
+data/models/
