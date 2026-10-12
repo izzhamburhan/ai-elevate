@@ -22,9 +22,9 @@ const STAGES: { id: Stage; title: string }[] = [
 ];
 
 type RunEvent =
-  | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string }
+  | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
   | { type: "approval"; approvalId: string; summary: string }
-  | { type: "final"; status: "done" | "cancelled" | "error"; text: string };
+  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
 type EventsReply = { runId: string | null; status: string; events: RunEvent[]; next: number; awaitingApproval?: boolean };
 type Point = { t_min: number; prb: number };
 type MapTower = { name: string; lat: number; lng: number; role: "failed" | "neighbour"; status: string; prb_now: number | null; tilted: boolean };
@@ -223,7 +223,7 @@ export function HealPanel({ runId }: { runId?: string }) {
   }, [status, poll, refreshState]);
 
   useEffect(() => {
-    if (status !== "done" && status !== "cancelled" && status !== "error") return;
+    if (status !== "done" && status !== "stopped" && status !== "cancelled" && status !== "error") return;
     // once now and once a little later, so the chart shows the settled result
     const timers = [0, 2500].map((ms) => setTimeout(() => void refreshState(), ms));
     return () => timers.forEach(clearTimeout);
@@ -319,6 +319,8 @@ export function HealPanel({ runId }: { runId?: string }) {
   const last = stageEvents.at(-1);
   const final = events.find((e): e is Extract<RunEvent, { type: "final" }> => e.type === "final");
   const running = status === "running";
+  // the stage a rejection, a policy denial or a missing crew stopped the run at; the stages after it never ran
+  const blockedAt = !running ? STAGES.findIndex((s) => stageEvents.findLast((e) => e.stage === s.id)?.blocked) : -1;
   const peak = state && state.watched.length ? Math.max(...state.watched.flatMap((t) => state.series[t].map((p) => p.prb))) : null;
   const now = state && state.watched.length ? Math.max(...state.watched.map((t) => state.series[t].at(-1)?.prb ?? 0)) : null;
 
@@ -346,10 +348,12 @@ export function HealPanel({ runId }: { runId?: string }) {
       ) : null}
 
       <ol className="flex flex-col gap-1">
-        {STAGES.map((s) => {
+        {STAGES.map((s, i) => {
           const seen = stageEvents.filter((e) => e.stage === s.id);
           const active = running && last?.stage === s.id;
-          const done = seen.length > 0 && !active;
+          const blocked = i === blockedAt;
+          const done = seen.length > 0 && !active && !blocked;
+          const skipped = blockedAt >= 0 && i > blockedAt && !seen.length;
           const latest = seen.at(-1);
           return (
             <li
@@ -357,13 +361,16 @@ export function HealPanel({ runId }: { runId?: string }) {
               className={cn(
                 "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors",
                 active && "border-primary bg-primary/10",
-                done && s.id === "rollback" && "border-red/30 bg-red/10",
-                !active && !done && "text-muted-foreground",
+                (blocked || (done && s.id === "rollback")) && "border-red/30 bg-red/10",
+                !active && !done && !blocked && "text-muted-foreground",
+                skipped && "opacity-60",
               )}
             >
               <span className="grid size-4 shrink-0 place-items-center">
                 {active ? (
                   <Loader2 className="size-3.5 animate-spin" />
+                ) : blocked ? (
+                  <X className="size-3.5 text-red" />
                 ) : done ? (
                   <Check className={cn("size-3.5", s.id === "rollback" ? "text-red" : "text-green")} />
                 ) : (
@@ -372,7 +379,7 @@ export function HealPanel({ runId }: { runId?: string }) {
               </span>
               <span className="font-medium">{s.title}</span>
               {latest?.attempt ? <span className="whitespace-nowrap rounded-full bg-muted px-1.5 text-[10px]">try {latest.attempt}</span> : null}
-              <span className="ml-auto truncate text-right text-muted-foreground">{latest?.label ?? ""}</span>
+              <span className={cn("ml-auto truncate text-right", blocked ? "text-red" : "text-muted-foreground")}>{latest?.label ?? (skipped ? "Skipped" : "")}</span>
             </li>
           );
         })}
@@ -382,7 +389,11 @@ export function HealPanel({ runId }: { runId?: string }) {
         <p
           className={cn(
             "rounded-lg border px-2.5 py-2 text-[12px] leading-5",
-            final.status === "error" ? "border-destructive/40 bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
+            final.status === "error"
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : final.status === "stopped"
+                ? "border-red/30 bg-red/10 text-foreground"
+                : "bg-card text-muted-foreground",
           )}
         >
           {final.text}
@@ -423,7 +434,9 @@ export function HealPanel({ runId }: { runId?: string }) {
                         ? "border-violet/30 bg-violet/10 text-violet"
                         : status === "done"
                           ? "border-green/30 bg-green/10 text-green"
-                          : "border-border bg-muted text-muted-foreground",
+                          : status === "stopped" || status === "error"
+                            ? "border-red/30 bg-red/10 text-red"
+                            : "border-border bg-muted text-muted-foreground",
                   )}
                 >
                   {approval ? "waiting for you" : running ? "running" : status}
@@ -434,7 +447,11 @@ export function HealPanel({ runId }: { runId?: string }) {
               </div>
 
               {approval ? <ApprovalBox summary={approval.summary} onDecide={decide} /> : null}
-              {last && !approval ? <p className="text-[12px] text-muted-foreground">Now: {last.label}</p> : null}
+              {final && final.status !== "done" ? (
+                <p className="rounded-lg border border-red/30 bg-red/10 px-2.5 py-2 text-[12px] leading-5">{final.text}</p>
+              ) : last && !approval ? (
+                <p className="text-[12px] text-muted-foreground">Now: {last.label}</p>
+              ) : null}
 
               {state ? (
                 <>

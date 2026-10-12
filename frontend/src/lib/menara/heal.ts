@@ -16,7 +16,8 @@ const MAX_WINDOW_MIN = 1440; // tower_get_kpi's limit
 const LEAD_MIN = 240;
 const MAX_POINTS = 200;
 const MAX_WATCHED = 4;
-const TILT_DEG = 4;
+const TILT_DEG = 4; // downtilt that sheds load from an overloaded neighbour (load balancing)
+const COVER_TILT_DEG = 2; // uptilt that stretches a neighbour over a dead tower's area (outage compensation)
 const KPI_STEP_MIN = 15; // the clock moves in these steps until a KPI sample after a change exists
 const CREW_WAIT_STEP_MIN = 30;
 const CREW_WAIT_MAX_MIN = 12 * 60;
@@ -28,14 +29,14 @@ type Data = Record<string, unknown>;
 // ---------------------------------------------------------------- run manager (one run at a time)
 
 export type RunEvent =
-  | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string }
+  | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
   | { type: "approval"; approvalId: string; summary: string }
-  | { type: "final"; status: "done" | "cancelled" | "error"; text: string };
+  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
 
 type Run = {
   id: string;
   tower: string;
-  status: "running" | "done" | "cancelled" | "error";
+  status: "running" | "done" | "stopped" | "cancelled" | "error";
   events: RunEvent[];
   cancelled: boolean;
   pending: ((approve: boolean) => void) | null;
@@ -138,20 +139,24 @@ function diagnose(status: Data, alarms: { code: string; message: string }[], pow
 async function execute(run: Run) {
   const T = run.tower;
   let tiltAttempt = 0;
-  const say = (stage: Stage, label: string, attempt = 0) => run.events.push({ type: "stage", step: null, stage, attempt, label });
+  /** `blocked` marks the stage the run stopped at (a rejection, a policy denial, no crew). */
+  const say = (stage: Stage, label: string, attempt = 0, blocked = false) =>
+    run.events.push({ type: "stage", step: null, stage, attempt, label, ...(blocked ? { blocked } : {}) });
   const call = async (tool: string, args: Args) => {
     if (run.cancelled) throw new Stopped("Run cancelled.");
     return dataOf(await callMenaraTool(tool, args));
   };
   const advance = (minutes: number) => call("demo_advance_clock", { minutes });
+  let activeTilt: { change_id: string; towers: string[] } | null = null;
+  const leftAsIs = () => (activeTilt ? `the neighbour tilt ${activeTilt.change_id} stays until ${T} is back` : "nothing was changed");
 
   /** Human in the loop: policy first, then a person decides. Returns a token, or stops the run. */
   const authorise = async (action: string, targets: string[], confidence: number, reason: string, what: string) => {
     const check = await call("policy_check_action", { action, targets, confidence, reason });
     const decision = String(check.decision);
     if (decision === "deny") {
-      say("approve", "Policy: denied");
-      throw new Stopped(`Policy denied ${what}: ${String(check.reason ?? "")}. Nothing was changed.`);
+      say("approve", "Policy: denied", 0, true);
+      throw new Stopped(`Policy denied ${what}: ${String(check.reason ?? "")}. The run stopped; ${leftAsIs()}.`);
     }
     say("approve", decision === "ask" ? "Policy: a human must approve" : "Policy: allowed; waiting for you");
     const approvalId = String(check.approval_id ?? `local-${run.events.length}`);
@@ -163,8 +168,8 @@ async function execute(run: Run) {
     const key = process.env.MENARA_APPROVER_KEY ?? "dev-only-approver-key";
     if (!approved) {
       if (check.approval_id) await callMenaraTool("policy_reject", { approval_id: approvalId, approver: APPROVER, approver_key: key });
-      say("approve", "Policy: a human rejected");
-      throw new Stopped(run.cancelled ? "Run cancelled." : `You rejected: ${what}. Nothing was done and the run stopped; the incident stays open.`);
+      say("approve", run.cancelled ? "Cancelled" : "Rejected by you", 0, true);
+      throw new Stopped(run.cancelled ? "Run cancelled." : `You rejected: ${what}. The run stopped and the incident stays open; ${leftAsIs()}.`);
     }
     say("approve", "Policy: a human approved");
     if (decision === "ask") {
@@ -187,6 +192,73 @@ async function execute(run: Run) {
     return null;
   };
   const clockNow = async () => Number((await call("demo_get_clock", {})).t_min ?? 0);
+
+  /**
+   * Cell outage compensation: neighbours that are UP, can tilt up and stay under the overload line in the twin
+   * uptilt by COVER_TILT_DEG to reach users in the dead tower's area. Returns the change, or null if none fit or it
+   * overloaded them (then it is rolled back).
+   */
+  const compensate = async (confidence: number): Promise<{ change_id: string; towers: string[] } | null> => {
+    const now = ((await call("tower_get_status", { enodeb_name: T })).neighbours as Neighbour[] | undefined) ?? [];
+    const up = now.filter(
+      (n) => n.enodeb_name !== T && n.status === "UP" && n.prb_util != null,
+    );
+    const tiltable: Neighbour[] = [];
+    for (const n of up) {
+      const cells = ((await call("ran_get_config", { enodeb_name: n.enodeb_name })).cells as { tilt_deg: number }[] | undefined) ?? [];
+      if (cells.length && cells.every((c) => c.tilt_deg >= COVER_TILT_DEG)) tiltable.push(n);
+    }
+    const simulate = (towers: string[]) =>
+      call("twin_simulate_tilt", { changes: towers.map((enodeb_name) => ({ enodeb_name, tilt_delta_deg: -COVER_TILT_DEG })) });
+    const predictions = (sim: Data) => (sim.tilted as { enodeb_name: string; predicted_prb: number | null }[] | undefined) ?? [];
+    let sim = tiltable.length ? await simulate(tiltable.map((n) => n.enodeb_name)) : {};
+    const fit = predictions(sim)
+      .filter((p) => p.predicted_prb != null && p.predicted_prb < THRESHOLD_PRB)
+      .map((p) => p.enodeb_name);
+    if (!fit.length) {
+      say("simulate", `No neighbour has room to cover ${T}: no tilt`);
+      return null;
+    }
+    if (fit.length < tiltable.length) sim = await simulate(fit);
+    const predicted = predictions(sim)
+      .map((p) => `${p.enodeb_name} at ${p.predicted_prb}%`)
+      .join(", ");
+    say("simulate", `Twin: a ${COVER_TILT_DEG}° uptilt covers ${T}'s area and keeps ${predicted}`);
+
+    const reason = `Cover the area of ${T} while it is down`;
+    const token = await authorise(
+      "ran_tilt_cells",
+      fit,
+      confidence,
+      reason,
+      `Uptilt ${fit.join(", ")} by ${COVER_TILT_DEG}° so they cover ${T}'s area while it is down`,
+    );
+    const before = Object.fromEntries(up.map((n) => [n.enodeb_name, n.prb_util ?? 0]));
+    const applied = await clockNow();
+    const change = await call("ran_tilt_cells", {
+      changes: fit.map((enodeb_name) => ({ enodeb_name, tilt_delta_deg: -COVER_TILT_DEG })),
+      policy_token: token,
+      reason,
+    });
+    const made = { change_id: String(change.change_id), towers: fit };
+    activeTilt = made;
+    say("apply", `Uptilted ${fit.join(", ")} by ${COVER_TILT_DEG}° to cover ${T}`);
+    await moveIncident("MITIGATING", `Uptilted ${fit.join(", ")} ${COVER_TILT_DEG}° to cover the area of ${T} (${made.change_id}).`);
+
+    const overloaded: string[] = [];
+    for (const tower of fit) {
+      const after = await loadAfter(tower, applied);
+      const ok = after != null && after < THRESHOLD_PRB;
+      say("verify", `${tower}: ${before[tower].toFixed(0)}% to ${after != null ? `${after.toFixed(0)}%` : "no sample"} ${ok ? "(covering, has room)" : "(overloaded)"}`);
+      if (!ok) overloaded.push(tower);
+    }
+    if (!overloaded.length) return made;
+    const undo = await authorise("ran_revert_tilt", fit, 0.99, "The uptilt overloaded a neighbour", `Roll back ${made.change_id}: ${overloaded.join(", ")} overloaded`);
+    await call("ran_revert_change", { change_id: made.change_id, policy_token: undo, reason: "The uptilt overloaded a neighbour" });
+    say("rollback", `Rolled back ${made.change_id}`);
+    activeTilt = null;
+    return null;
+  };
 
   let incidentId = "";
   let incidentStatus = "OPEN";
@@ -240,12 +312,9 @@ async function execute(run: Run) {
       say("diagnose", `Incident ${incidentId} opened (${dx.cause})`);
     }
 
-    // ---- simulate and relieve overloaded neighbours (only when they really are overloaded)
-    let activeTilt: { change_id: string; towers: string[] } | null = null;
-    if (!hot.length) {
-      const peak = Math.max(0, ...neighbours.map((n) => n.prb_util ?? 0));
-      say("simulate", `Neighbours have headroom (peak ${peak.toFixed(0)}% PRB): no tilt needed`);
-    } else {
+    // ---- simulate, then act on the neighbours: shed load from overloaded ones (load balancing), or, when the
+    // tower is down and they have room, uptilt them to cover its area (cell outage compensation)
+    if (hot.length) {
       let targets = hot.map((n) => n.enodeb_name);
       const before = Object.fromEntries(hot.map((n) => [n.enodeb_name, n.prb_util ?? 0]));
       for (tiltAttempt = 1; tiltAttempt <= 2 && targets.length; tiltAttempt++) {
@@ -288,6 +357,11 @@ async function execute(run: Run) {
         activeTilt = null;
         targets = tiltAttempt < 2 ? targets : [];
       }
+    } else if (status.status === "DOWN") {
+      activeTilt = await compensate(dx.confidence);
+    } else {
+      const peak = Math.max(0, ...neighbours.map((n) => n.prb_util ?? 0));
+      say("simulate", `Neighbours have headroom (peak ${peak.toFixed(0)}% PRB): no tilt needed`);
     }
 
     // ---- fix the tower itself
@@ -321,6 +395,7 @@ async function execute(run: Run) {
       if (waited > 0) say("apply", `A ${dx.skill} crew is free after ${waited} min`);
       const best = ((crew.candidates as { tech_id: string; name: string; eta_min: number; access: string }[] | undefined) ?? [])[0];
       if (!best) {
+        say("apply", `No ${dx.skill} crew free within ${CREW_WAIT_MAX_MIN / 60} h`, 0, true);
         await note(`No ${dx.skill} crew became free within ${CREW_WAIT_MAX_MIN / 60} h.`);
         throw new Stopped(`No ${dx.skill} crew became free within ${CREW_WAIT_MAX_MIN / 60} hours; the incident stays open for a person to follow up.`);
       }
@@ -330,7 +405,7 @@ async function execute(run: Run) {
         [T],
         dx.confidence,
         dx.why,
-        `Send ${best.name} (${dx.skill}, ETA ${best.eta_min} min by ${best.access.toLowerCase()}) to fix ${T}`,
+        `Dispatch ${dx.skill} technician ${best.name} to repair the ${dx.problem} at ${T} (ETA ${best.eta_min} min by ${best.access.toLowerCase()})`,
       );
       const job = await call("field_dispatch", { enodeb_name: T, tech_id: best.tech_id, task, policy_token: token, reason: dx.why, skill: dx.skill });
       say("apply", `${best.name} dispatched (${String(job.job_id ?? "")}), ETA ${best.eta_min} min`);
@@ -359,8 +434,9 @@ async function execute(run: Run) {
     run.status = "done";
   } catch (error) {
     const stopped = error instanceof Stopped;
-    run.events.push({ type: "final", status: run.cancelled ? "cancelled" : stopped ? "done" : "error", text: error instanceof Error ? error.message : String(error) });
-    run.status = run.cancelled ? "cancelled" : stopped ? "done" : "error";
+    const outcome = run.cancelled ? "cancelled" : stopped ? "stopped" : "error";
+    run.events.push({ type: "final", status: outcome, text: error instanceof Error ? error.message : String(error) });
+    run.status = outcome;
   } finally {
     run.pending = null;
   }
