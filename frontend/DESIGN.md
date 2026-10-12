@@ -432,7 +432,8 @@ Close it with a round icon button:
 ## 11. Gotchas
 
 - **Backend in search mode.** `backend/run_all.py` starts the MCP servers with `--search`, so each
-  server lists only `<name>_search_tools` and `<name>_call_tool`. `lib/menara/call.ts` reaches a
+  server lists only `<name>_search_tools` and `<name>_call_tool`, except Menara servers with six tools or fewer,
+  which list them directly to save the agent a search round trip. `lib/menara/call.ts` reaches a
   real tool such as `tower_list_in_bbox` through that call proxy, so UI code can name tools
   directly either way.
 - **Stale CSS after a `globals.css` change.** Turbopack's file-system cache

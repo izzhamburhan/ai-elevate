@@ -32,7 +32,15 @@ export type ChatMessageMetadata = {
    * follow-up suggestions only offer what the next turn can answer.
    */
   toolNames?: string[];
+  /** When each tool call ran, by tool call id, so the "Worked for 23s" line survives a reload. */
+  workTiming?: WorkTiming;
 };
+
+/**
+ * Epoch ms, streamed in two halves that merge. `startedAt` includes the thinking just before the
+ * call; `endedAt` is unset until the result is in (and stays unset for tools that run in the browser).
+ */
+export type WorkTiming = Record<string, { startedAt?: number; endedAt?: number }>;
 
 export function toTurnUsage(usage: LanguageModelUsage): TurnUsage {
   return {

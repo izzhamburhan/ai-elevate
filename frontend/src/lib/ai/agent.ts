@@ -8,6 +8,12 @@ the question, and say plainly when a request needs a tool you don't have. Whenev
 (a tool, data source or capability is missing, unavailable or failed), first call ${CAPABILITY_GAP_TOOL} once.
 Only offer what your tools can do now; never promise a capability that has no tool here.
 Keep synthetic data and scenarios clearly labeled synthetic.
+Work quietly: do not narrate your plan or each step ("I'll check...", "Let me look up...") between tool calls;
+the user sees your steps already. Write only the answer once your tools are done.
+If the request needs a specific tower and none is named, selected or attached as context (for example "right now" or
+"the worst one"), take the most urgent tower yourself: the DOWN tower with the most severe active alarms, found with
+one alarms lookup. Say which tower you took in your first sentence, then answer. Ask which one only when no tower is
+down or degraded, or when the request needs a place rather than a tower.
 When a user-drawn boundary/polygon is attached as context, use its centroid, radius, or bounding box with tools like show_area or site queries to analyze what is inside that zone.`;
 
 /**
