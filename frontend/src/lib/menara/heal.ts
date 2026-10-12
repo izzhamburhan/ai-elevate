@@ -177,8 +177,6 @@ type Run = {
   status: "running" | "done" | "cancelled" | "error";
   events: RunEvent[];
   cancelled: boolean;
-  /** Demo mode: approve every policy ask without waiting for a person. Off unless the user asked for it. */
-  autoApprove: boolean;
   pending: ((approve: boolean) => void) | null;
 };
 
@@ -189,9 +187,9 @@ export function currentRun(): Run | undefined {
   return holder.__elevateHealRun;
 }
 
-export function startReplay(autoApprove = false): string {
+export function startReplay(): string {
   if (holder.__elevateHealRun?.status === "running") throw new Error("A self-heal run is already in progress.");
-  const run: Run = { id: crypto.randomUUID().slice(0, 8), status: "running", events: [], cancelled: false, autoApprove, pending: null };
+  const run: Run = { id: crypto.randomUUID().slice(0, 8), status: "running", events: [], cancelled: false, pending: null };
   holder.__elevateHealRun = run;
   void execute(run);
   return run.id;
@@ -241,12 +239,11 @@ async function execute(run: Run) {
           const approvalId = String(data.approval_id);
           const summary = `${args.action} on ${(args.targets as string[]).join(", ")} (confidence ${args.confidence}). Policy says: ${data.reason ?? "approval needed"}`;
           run.events.push({ type: "stage", step: i, ...tracker.observe(name, args, { decision: "ask" })! });
-          const approved = run.autoApprove
-            ? true
-            : await new Promise<boolean>((resolve) => {
-                run.pending = resolve;
-                run.events.push({ type: "approval", approvalId, summary });
-              });
+          // human in the loop: the run waits here until a person approves or rejects in the UI
+          const approved = await new Promise<boolean>((resolve) => {
+            run.pending = resolve;
+            run.events.push({ type: "approval", approvalId, summary });
+          });
           const key = process.env.MENARA_APPROVER_KEY ?? "dev-only-approver-key";
           if (!approved) {
             await callMenaraTool("policy_reject", { approval_id: approvalId, approver: APPROVER, approver_key: key });
@@ -255,13 +252,7 @@ async function execute(run: Run) {
           }
           const granted = await callMenaraTool("policy_approve", { approval_id: approvalId, approver: APPROVER, approver_key: key });
           result = { decision: "approved_by_human", approval_id: approvalId, token: dataOf(granted).token };
-          run.events.push({
-            type: "stage",
-            step: null,
-            stage: "approve",
-            attempt: 0,
-            label: run.autoApprove ? "Policy: approved automatically (demo)" : POLICY_WORDS.approved_by_human,
-          });
+          run.events.push({ type: "stage", step: null, stage: "approve", attempt: 0, label: POLICY_WORDS.approved_by_human });
         } else {
           run.events.push({ type: "stage", step: i, ...tracker.observe(name, args, data)! });
         }
@@ -311,6 +302,10 @@ export type HealState = {
   changes: { change_id: string; status: string; applied_min: number | null; reverted_min: number | null; towers: string[] }[];
   incident: { incident_id: string; status: string } | null;
   run: { id: string; status: Run["status"] } | null;
+  /** The failed tower and its neighbours, for drawing the incident on the map. */
+  map: {
+    towers: { name: string; lat: number; lng: number; role: "failed" | "neighbour"; status: string; prb_now: number | null; tilted: boolean }[];
+  };
 };
 
 export async function healState(): Promise<HealState> {
@@ -347,8 +342,29 @@ export async function healState(): Promise<HealState> {
       series[tower] = thin(points);
     }
   }
+  // positions and live status of the failed tower and its neighbours
+  const at = { lat: Number(status.lat), lng: Number(status.lng) };
+  const around = Number.isFinite(at.lat)
+    ? (((await safe("tower_list_in_radius", { lat: at.lat, lng: at.lng, radius_km: 10, limit: 60 })).towers as
+        | { enodeb_name: string; lat: number; lng: number; status: string }[]
+        | undefined) ?? [])
+    : [];
+  const tiltedNow = new Set(changes.filter((c) => c.status !== "REVERTED").flatMap((c) => (c.towers as string[] | undefined) ?? []));
+  const mapTowers = around
+    .filter((t) => t.enodeb_name === failed || candidates.includes(t.enodeb_name))
+    .map((t) => ({
+      name: t.enodeb_name,
+      lat: t.lat,
+      lng: t.lng,
+      role: (t.enodeb_name === failed ? "failed" : "neighbour") as "failed" | "neighbour",
+      status: t.status,
+      prb_now: series[t.enodeb_name]?.at(-1)?.prb ?? null,
+      tilted: tiltedNow.has(t.enodeb_name),
+    }));
+
   const run = currentRun();
   return {
+    map: { towers: mapTowers },
     clock_min: clockMin,
     failed_tower: failed,
     failed_status: (status.status as string | undefined) ?? null,

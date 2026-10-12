@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Play, RotateCcw, Square } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, HeartPulse, Loader2, MapPinned, ShieldAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FLOATING_EVENT, useMapDraw } from "@/lib/menara/map-draw";
 import { cn } from "@/lib/utils";
 
 type Stage = "detect" | "diagnose" | "simulate" | "approve" | "apply" | "verify" | "rollback" | "recover";
@@ -24,6 +26,7 @@ type RunEvent =
   | { type: "final"; status: "done" | "cancelled" | "error"; text: string };
 type EventsReply = { runId: string | null; status: string; events: RunEvent[]; next: number; awaitingApproval?: boolean };
 type Point = { t_min: number; prb: number };
+type MapTower = { name: string; lat: number; lng: number; role: "failed" | "neighbour"; status: string; prb_now: number | null; tilted: boolean };
 type HealState = {
   clock_min: number;
   failed_tower: string;
@@ -33,9 +36,12 @@ type HealState = {
   series: Record<string, Point[]>;
   changes: { change_id: string; status: string; applied_min: number | null; reverted_min: number | null; towers: string[] }[];
   incident: { incident_id: string; status: string } | null;
+  run: { id: string; status: string } | null;
+  map: { towers: MapTower[] };
 };
 
 const SERIES_COLORS = ["#7c5cff", "#f59e0b", "#10b981", "#38bdf8"];
+const MAP_COLORS = { failed: "#ef4444", hot: "#f97316", ok: "#22c55e", tilted: "#a855f7", link: "#f59e0b" };
 
 async function post<T>(url: string, body: unknown = {}): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -44,7 +50,7 @@ async function post<T>(url: string, body: unknown = {}): Promise<T> {
   return data as T;
 }
 
-function Chart({ state }: { state: HealState }) {
+function Chart({ state, width = 360, height = 170 }: { state: HealState; width?: number; height?: number }) {
   const towers = state.watched;
   if (!towers.length) {
     return <p className="text-[12px] text-muted-foreground">The chart appears once a neighbour of the failed tower runs hot or is re-tilted.</p>;
@@ -52,36 +58,33 @@ function Chart({ state }: { state: HealState }) {
   const all = towers.flatMap((t) => state.series[t]);
   const minT = Math.min(...all.map((p) => p.t_min));
   const maxT = Math.max(...all.map((p) => p.t_min), minT + 1);
-  const W = 360;
-  const H = 150;
-  const pad = { l: 28, r: 8, t: 8, b: 18 };
-  const x = (t: number) => pad.l + ((t - minT) / (maxT - minT)) * (W - pad.l - pad.r);
-  const y = (v: number) => pad.t + (1 - Math.min(100, Math.max(0, v)) / 100) * (H - pad.t - pad.b);
+  const pad = { l: 30, r: 8, t: 30, b: 18 };
+  const x = (t: number) => pad.l + ((t - minT) / (maxT - minT)) * (width - pad.l - pad.r);
+  const y = (v: number) => pad.t + (1 - Math.min(100, Math.max(0, v)) / 100) * (height - pad.t - pad.b);
   const marks = state.changes.flatMap((c, i) => [
     c.applied_min != null ? { t: c.applied_min, text: `tilt ${i + 1}` } : null,
     c.reverted_min != null ? { t: c.reverted_min, text: `undo ${i + 1}` } : null,
   ]);
-
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="PRB load of the neighbour towers">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="PRB load of the neighbour towers">
         {[0, 50, 100].map((v) => (
           <g key={v}>
-            <line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth={0.5} />
-            <text x={pad.l - 4} y={y(v) + 3} textAnchor="end" className="fill-muted-foreground text-[8px]">
+            <line x1={pad.l} x2={width - pad.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth={0.6} />
+            <text x={pad.l - 4} y={y(v) + 3} textAnchor="end" className="fill-muted-foreground text-[9px]">
               {v}%
             </text>
           </g>
         ))}
-        <line x1={pad.l} x2={W - pad.r} y1={y(state.threshold)} y2={y(state.threshold)} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={0.8} />
-        <text x={W - pad.r} y={y(state.threshold) - 2} textAnchor="end" fill="#ef4444" className="text-[8px]">
+        <line x1={pad.l} x2={width - pad.r} y1={y(state.threshold)} y2={y(state.threshold)} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={0.9} />
+        <text x={width - pad.r} y={y(state.threshold) - 3} textAnchor="end" fill="#ef4444" className="text-[9px]">
           overload {state.threshold}%
         </text>
         {marks.map((m, i) =>
           m ? (
             <g key={`${m.text}-${i}`}>
-              <line x1={x(m.t)} x2={x(m.t)} y1={pad.t} y2={H - pad.b} className="stroke-muted-foreground" strokeDasharray="2 2" strokeWidth={0.6} />
-              <text x={x(m.t) + 2} y={pad.t + 7} className="fill-muted-foreground text-[8px]">
+              <line x1={x(m.t)} x2={x(m.t)} y1={pad.t} y2={height - pad.b} className="stroke-muted-foreground" strokeDasharray="2 2" strokeWidth={0.7} />
+              <text x={x(m.t) + 2} y={pad.t - 21 + (i % 3) * 9} className="fill-muted-foreground text-[9px]">
                 {m.text}
               </text>
             </g>
@@ -92,7 +95,7 @@ function Chart({ state }: { state: HealState }) {
             key={tower}
             fill="none"
             stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-            strokeWidth={1.4}
+            strokeWidth={1.6}
             points={state.series[tower].map((p) => `${x(p.t_min).toFixed(1)},${y(p.prb).toFixed(1)}`).join(" ")}
           />
         ))}
@@ -111,23 +114,57 @@ function Chart({ state }: { state: HealState }) {
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="rounded-lg border bg-card px-2.5 py-1.5">
-      <div className={cn("text-sm font-semibold tabular-nums", tone)}>{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+    <div className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+      <div className={cn("truncate whitespace-nowrap text-[13px] font-semibold tabular-nums", tone)} title={value}>
+        {value}
+      </div>
+      <div className="truncate text-[10.5px] text-muted-foreground">{label}</div>
     </div>
   );
 }
 
-/** Self-heal: the flood story as a closed loop (detect to recover), run as a replay that a human approves step by step. */
-export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
+/** The human-in-the-loop prompt: nothing risky happens until a person presses Approve. */
+function ApprovalBox({ summary, onDecide }: { summary: string; onDecide: (approve: boolean) => void }) {
+  return (
+    <div className="rounded-lg border border-amber-500/60 bg-amber-500/10 p-2.5 text-[12px]">
+      <p className="mb-1 flex items-center gap-1.5 font-semibold">
+        <ShieldAlert className="size-3.5 text-amber-500" /> Your approval is needed
+      </p>
+      <p className="mb-2 text-muted-foreground">{summary}</p>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onDecide(true)}>
+          Approve
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => onDecide(false)}>
+          Reject
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Self-heal as a chat card. The chat shows the 8-stage loop; a floating card at the bottom right shows the approval
+ * prompt, the tiles and the load chart, and the map draws the incident (the failed tower, its neighbours by load, the
+ * tilted ones). Every risky step waits for a person (human in the loop). `runId` is the run this card started.
+ */
+export function HealPanel({ runId }: { runId?: string }) {
+  const draw = useMapDraw();
   const [events, setEvents] = useState<RunEvent[]>([]);
-  const [runId, setRunId] = useState<string | null>(null);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [approval, setApproval] = useState<{ approvalId: string; summary: string } | null>(null);
   const [state, setState] = useState<HealState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const next = useRef(0);
   const busy = useRef(false);
+  const drawn = useRef<string>("");
+  const framed = useRef(false);
+  const floatingId = useId();
+
+  // this card's run is the current one (older chat cards only show their stages)
+  const owns = Boolean(runId) && currentId === runId;
 
   const refreshState = useCallback(async () => {
     try {
@@ -143,7 +180,7 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
     try {
       const reply = await post<EventsReply>("/api/menara/heal/events", { since: next.current });
       next.current = reply.next;
-      setRunId(reply.runId);
+      setCurrentId(reply.runId);
       setStatus(reply.status);
       if (reply.events.length) setEvents((prev) => [...prev, ...reply.events]);
       const pending = [...reply.events].reverse().find((e) => e.type === "approval");
@@ -156,7 +193,7 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
     }
   }, []);
 
-  // restore after a tab switch (the panel unmounts), then keep polling while a run is going
+  // restore after a remount, then keep polling while a run is going
   useEffect(() => {
     const timer = setTimeout(() => {
       void poll();
@@ -182,45 +219,76 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
     return () => timers.forEach(clearTimeout);
   }, [status, refreshState]);
 
-  const start = async () => {
-    setError(null);
-    try {
-      next.current = 0;
-      setEvents([]);
-      setApproval(null);
-      const { runId: id } = await post<{ runId: string }>("/api/menara/heal");
-      setRunId(id);
-      setStatus("running");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  // the floating card opens by itself while this card's run is going; another floating card closes it
+  useEffect(() => {
+    if (!owns || status !== "running") return;
+    const timer = setTimeout(() => {
+      setOpen(true);
+      window.dispatchEvent(new CustomEvent(FLOATING_EVENT, { detail: floatingId }));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [owns, status, floatingId]);
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== floatingId) setOpen(false);
+    };
+    window.addEventListener(FLOATING_EVENT, onOpen);
+    return () => window.removeEventListener(FLOATING_EVENT, onOpen);
+  }, [floatingId]);
+
+  // draw the incident on the map when what it shows changes
+  useEffect(() => {
+    if (!owns || !open || !state?.map.towers.length) return;
+    const towers = state.map.towers;
+    const signature = JSON.stringify(towers.map((t) => [t.name, t.status, t.tilted, (t.prb_now ?? 0) >= state.threshold]));
+    if (signature === drawn.current) return;
+    drawn.current = signature;
+    const failed = towers.find((t) => t.role === "failed");
+    const neighbours = towers.filter((t) => t.role === "neighbour");
+    const row = (t: MapTower) => ({ name: t.name, lat: t.lat, lng: t.lng, status: t.status, prb_now: t.prb_now ?? "" });
+    void (async () => {
+      draw.removeOurs(["heal_"]);
+      if (failed) {
+        await draw.addLines(
+          "heal_links",
+          "Load moved to neighbours",
+          neighbours.map((n) => ({ lat0: failed.lat, lng0: failed.lng, lat1: n.lat, lng1: n.lng })),
+          MAP_COLORS.link,
+          2,
+        );
+      }
+      const hot = neighbours.filter((n) => !n.tilted && (n.prb_now ?? 0) >= state.threshold);
+      const ok = neighbours.filter((n) => !n.tilted && (n.prb_now ?? 0) < state.threshold);
+      await draw.addPoints("heal_ok", "Neighbours OK", ok.map(row), MAP_COLORS.ok, 40);
+      await draw.addPoints("heal_hot", "Neighbours overloaded", hot.map(row), MAP_COLORS.hot, 55);
+      await draw.addPoints("heal_tilted", "Neighbours re-tilted", neighbours.filter((n) => n.tilted).map(row), MAP_COLORS.tilted, 60);
+      if (failed) await draw.addPoints("heal_failed", `${failed.name} (${failed.status})`, [row(failed)], failed.status === "UP" ? MAP_COLORS.ok : MAP_COLORS.failed, 75);
+      if (!framed.current) {
+        framed.current = true;
+        const lngs = towers.map((t) => t.lng);
+        const lats = towers.map((t) => t.lat);
+        draw.fit([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]);
+      }
+    })();
+  }, [owns, open, state, draw]);
 
   const decide = async (approve: boolean) => {
-    if (!runId) return;
+    if (!currentId) return;
     setApproval(null);
-    await post("/api/menara/heal/decision", { runId, approve }).catch((e) => setError(String(e)));
+    await post("/api/menara/heal/decision", { runId: currentId, approve }).catch((e) => setError(String(e)));
     void poll();
   };
 
-  const cancel = async () => {
-    if (runId) await post("/api/menara/heal", { action: "cancel", runId }).catch((e) => setError(String(e)));
-    void poll();
+  const close = () => {
+    setOpen(false);
+    drawn.current = "";
+    framed.current = false;
+    draw.removeOurs(["heal_"]);
   };
 
-  const reset = async () => {
-    setError(null);
-    try {
-      await post("/api/menara/reset");
-      next.current = 0;
-      setEvents([]);
-      setApproval(null);
-      setStatus("idle");
-      setRunId(null);
-      void refreshState();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+  const showAgain = () => {
+    setOpen(true);
+    window.dispatchEvent(new CustomEvent(FLOATING_EVENT, { detail: floatingId }));
   };
 
   const stageEvents = events.filter((e): e is Extract<RunEvent, { type: "stage" }> => e.type === "stage");
@@ -231,53 +299,13 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const now = state && state.watched.length ? Math.max(...state.watched.map((t) => state.series[t].at(-1)?.prb ?? 0)) : null;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 font-sans text-foreground",
-        embedded ? "max-h-[40rem] overflow-y-auto rounded-xl border bg-card/40 p-3" : "min-h-0 flex-1 overflow-y-auto pb-3",
-      )}
-    >
-      <h2 className={cn("truncate font-bold tracking-tight", embedded ? "text-sm" : "text-base")}>Self-heal</h2>
-      {!embedded ? (
-        <p className="text-[12px] leading-5 text-muted-foreground">
-          A flood cuts power to a tower. Watch the loop detect it, simulate a fix, ask a human, apply it, check the result and roll back if it fails.
-          A scripted replay (no model key) drives the real MCP servers.
-        </p>
-      ) : null}
-
-      {!embedded ? (
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={start} disabled={running} className="h-9 rounded-[10px]">
-            {running ? <Loader2 className="animate-spin" /> : <Play />}
-            Run self-heal (replay)
-          </Button>
-          {running ? (
-            <Button variant="outline" onClick={cancel} className="h-9 rounded-[10px]">
-              <Square /> Cancel
-            </Button>
-          ) : null}
-          <Button variant="ghost" onClick={reset} disabled={running} className="h-9 rounded-[10px]" title="Clear incidents, approvals, RAN changes and the clock">
-            <RotateCcw /> Reset demo
-          </Button>
-        </div>
-      ) : null}
+    <div className="flex max-h-[40rem] flex-col gap-3 overflow-y-auto rounded-xl border bg-card/40 p-3 font-sans text-foreground">
+      <h2 className="flex items-center gap-1.5 truncate text-sm font-bold tracking-tight">
+        <HeartPulse className="size-4 text-red-500" /> Self-heal{state ? ` · ${state.failed_tower}` : ""}
+      </h2>
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
-
-      {approval ? (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 text-[12px]">
-          <p className="mb-2 font-medium">A human must approve</p>
-          <p className="mb-2 text-muted-foreground">{approval.summary}</p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => decide(true)}>
-              Approve
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => decide(false)}>
-              Reject
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {owns && approval ? <ApprovalBox summary={approval.summary} onDecide={decide} /> : null}
 
       <ol className="flex flex-col gap-1">
         {STAGES.map((s) => {
@@ -296,10 +324,16 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
               )}
             >
               <span className="grid size-4 shrink-0 place-items-center">
-                {active ? <Loader2 className="size-3.5 animate-spin" /> : done ? <Check className={cn("size-3.5", s.id === "rollback" ? "text-red-500" : "text-emerald-500")} /> : <span className="size-1.5 rounded-full bg-muted-foreground/40" />}
+                {active ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : done ? (
+                  <Check className={cn("size-3.5", s.id === "rollback" ? "text-red-500" : "text-emerald-500")} />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+                )}
               </span>
               <span className="font-medium">{s.title}</span>
-              {latest?.attempt ? <span className="rounded bg-muted px-1 text-[10px]">attempt {latest.attempt}</span> : null}
+              {latest?.attempt ? <span className="whitespace-nowrap rounded bg-muted px-1 text-[10px]">try {latest.attempt}</span> : null}
               <span className="ml-auto truncate text-right text-muted-foreground">{latest?.label ?? ""}</span>
             </li>
           );
@@ -307,26 +341,86 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
       </ol>
 
       {final ? (
-        <p className={cn("rounded-lg border px-2.5 py-2 text-[12px] leading-5", final.status === "error" ? "border-destructive/40 bg-destructive/10 text-destructive" : "bg-card text-muted-foreground")}>
+        <p
+          className={cn(
+            "rounded-lg border px-2.5 py-2 text-[12px] leading-5",
+            final.status === "error" ? "border-destructive/40 bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
+          )}
+        >
           {final.text}
         </p>
       ) : null}
 
-      {state ? (
-        <>
-          <div className="grid grid-cols-4 gap-2">
-            <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red-500" : undefined} />
-            <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-emerald-500" : undefined} />
-            <Tile label="Tilts tried" value={String(state.changes.length)} />
-            <Tile label="Incident" value={state.incident?.status ?? "none"} />
-          </div>
-          <section>
-            <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">PRB load of the neighbours of {state.failed_tower}</h3>
-            <Chart state={state} />
-          </section>
-        </>
+      {owns ? (
+        open ? (
+          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <MapPinned className="size-3.5" /> The load chart and the incident on the map are at the bottom right.
+          </p>
+        ) : (
+          <Button size="sm" variant="outline" className="self-start" onClick={showAgain}>
+            <MapPinned /> Show on the map
+          </Button>
+        )
       ) : null}
-      <p className="text-[11px] text-muted-foreground">Synthetic data. Nothing real-world is changed.</p>
+      <p className="text-[11px] text-muted-foreground">Synthetic data. Nothing real-world is changed; risky steps wait for your approval.</p>
+
+      {owns && open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-label="Self-heal"
+              className="fixed right-4 bottom-10 z-[60] flex max-h-[70vh] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-2.5 overflow-y-auto rounded-xl border bg-background/95 p-3 font-sans text-foreground shadow-xl backdrop-blur"
+            >
+              <div className="flex items-center gap-1.5">
+                <HeartPulse className="size-4 text-red-500" />
+                <h3 className="text-[13px] font-semibold">Self-heal{state ? ` · ${state.failed_tower}` : ""}</h3>
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                    running ? "bg-primary/15 text-primary" : status === "done" ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {approval ? "waiting for you" : running ? "running" : status}
+                </span>
+                <button type="button" onClick={close} aria-label="Close" className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+
+              {approval ? <ApprovalBox summary={approval.summary} onDecide={decide} /> : null}
+              {last && !approval ? <p className="text-[12px] text-muted-foreground">Now: {last.label}</p> : null}
+
+              {state ? (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red-500" : undefined} />
+                    <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-emerald-500" : undefined} />
+                    <Tile label="Tilts tried" value={String(state.changes.length)} />
+                    <Tile label="Incident" value={(state.incident?.status ?? "none").toLowerCase()} tone={state.incident?.status === "RESOLVED" ? "text-emerald-500" : undefined} />
+                  </div>
+                  <section>
+                    <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">PRB load of the neighbours of {state.failed_tower}</h4>
+                    <Chart state={state} width={380} height={180} />
+                  </section>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                    {[
+                      ["Failed tower", MAP_COLORS.failed],
+                      ["Overloaded", MAP_COLORS.hot],
+                      ["OK", MAP_COLORS.ok],
+                      ["Re-tilted", MAP_COLORS.tilted],
+                    ].map(([label, color]) => (
+                      <span key={label} className="flex items-center gap-1">
+                        <span className="size-2 rounded-full" style={{ background: color }} />
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

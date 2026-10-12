@@ -133,25 +133,19 @@ export const menaraToolkit = defineToolkit({
     display: "standalone",
     description:
       "Run the self-heal replay of the flood incident (detect, diagnose, simulate, approve, apply, verify, roll back, recover) and show it " +
-      "live as a diagram with a load chart. Use it when the user asks to run, show or explain self-healing, the flood incident or the " +
-      "closed loop. The card shows every step, so do not describe them yourself; add at most one sentence. Risky steps wait for a human to " +
-      "approve in the card; set `auto_approve` to true only when the user explicitly asks to run it without asking for approval.",
-    parameters: z.object({ auto_approve: z.boolean().optional().describe("True only when the user asks to skip the approval prompts") }),
-    execute: async ({ auto_approve }) => {
-      const res = await fetch("/api/menara/heal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autoApprove: auto_approve === true }),
-      });
-      const body = await res.json().catch(() => ({}));
-      // a run already in progress is fine: the card shows that one
-      if (!res.ok && !String(body.error ?? "").includes("already in progress")) throw new Error(body.error ?? `Could not start (${res.status})`);
+      "live: the loop in the chat, the incident on the map and the load chart at the bottom right. Use it when the user asks to run, show or " +
+      "explain self-healing, the flood incident or the closed loop. Human in the loop: every risky step waits for the user to approve or " +
+      "reject in the card; it cannot be skipped. The card shows every step, so do not describe them yourself; add at most one sentence, " +
+      "and remind the user to approve in the card.",
+    parameters: z.object({}),
+    execute: async () => {
+      const started = await post<{ runId: string; existing: boolean }>("/api/menara/heal", {});
       return {
-        started: true,
-        auto_approve: auto_approve === true,
-        note: auto_approve ? "The diagram is shown to the user; approvals are automatic." : "The diagram is shown to the user; a human approves the risky steps in the card.",
+        run_id: started.runId,
+        already_running: started.existing,
+        note: "The self-heal card is shown to the user. A human must approve each risky step in the card (human in the loop).",
       };
     },
-    render: ({ result }) => (result ? <HealPanel embedded /> : <Working text="Starting the self-heal replay…" />),
+    render: ({ result }) => (result ? <HealPanel runId={(result as { run_id?: string }).run_id} /> : <Working text="Starting the self-heal replay…" />),
   },
 });
