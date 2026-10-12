@@ -1,6 +1,6 @@
 # Weather ML implementation and acceptance report
 
-Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. Implementation and integration changes are committed locally; no push, pull request or remote merge was made. The latest fetched `origin/main` (`bdabf62e67b09e9382e92e48866b45938680e94b`) is an ancestor of this branch. Its Menara integrations and NetOps relocation to `backend/netops-mcp/` are preserved. Local `main` remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. No Hermes Ops/XSSHunter container or SSH tunnel was stopped, restarted, removed, or modified.
+Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. Implementation and integration changes are committed locally; no push, pull request or remote merge was made. The qualified upstream base (`bdabf62e67b09e9382e92e48866b45938680e94b`) is an ancestor of this branch. A later read-only fetch found `origin/main` at `2fa8e629efa369244a655379dbffb16edf1b451e`; that new upstream snapshot is not merged, per the current instruction. See the merge-readiness follow-up for the previewed conflict. Its Menara integrations and NetOps relocation to `backend/netops-mcp/` are preserved. Local `main` remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. No Hermes Ops/XSSHunter container or SSH tunnel was stopped, restarted, removed, or modified.
 
 ## Delivered architecture
 
@@ -35,7 +35,8 @@ PASS means the stated check was actually performed or the delivered artifact was
 
 | Criterion | Status | Evidence / limit |
 |---|---|---|
-| Isolated branch, current upstream preserved, no publication | PASS | Local feature commits; `origin/main` ancestor verified; Menara/backend diff empty; local main unchanged; no push/PR/remote merge |
+| Isolated branch, qualified upstream base preserved, no publication | PASS | Local feature commits; qualified bdabf62 base is an ancestor; original Menara/backend preserved; local main unchanged; no push/PR/remote merge |
+| Compatible with newly fetched upstream2fa8e62 | FAIL | Branch not yet synchronized; merge preview reports one assistant-panel conflict; no actual merge started |
 | Existing Next.js / Kepler / NetOps architecture retained | PASS | Additive connector/panel/service; NetOps source diff empty; existing agent still used |
 | Existing MCP tools not renamed or removed | PASS | Existing NetOps MCP discovers 62 tools; Kepler original 12 remain; six new weather names do not collide |
 | Actual pretrained ML, not LLM-generated weather | PASS | Direct Chronos tensor inference plus 108 backtest calls; existing agent returned the ML tool's structured forecast |
@@ -72,7 +73,7 @@ PASS means the stated check was actually performed or the delivered artifact was
 | Prepared pitch defaults and cached geographic context | PASS | Production browser defaults to cached qwen3.5:9b; no_map with local Natural Earth outlines and forecast points renders; light/dark toggles retain cached setting |
 | Deterministic replay across restart / unchanged network data | PASS | Exact semantic forecast hashes equal across recreation; preserved NetOps DB hash; repeated MCP call assertion |
 | Full browser pitch with all Internet disabled | NOT VERIFIED | Actual model air-gap and frontend server egress-restricted checks pass; browser Internet was not globally disabled |
-| Menara code/routes retained versus current upstream | PASS | `origin/main` ancestor; backend/toolkit/route diff empty; all routes compile |
+| Menara code/routes retained versus qualified upstream base | PASS | bdabf62 ancestor; backend/toolkit/route diff empty versus that base; all 18 qualified routes compile |
 | Menara multi-service workflows executed | NOT VERIFIED | These unrelated services were not started/reset as part of Weather scope |
 | Cached-only startup and repeat procedure | PASS | demo.sh build/start executed with cached NetOps/Ollama; existing model/data reused; no reset/download/seed |
 | Mandatory backtesting and baseline comparisons | PASS | Chronological 60/20/20 split, rolling origins, 108 direct calls, persistence/seasonal 24 h comparison; full actual report retained |
@@ -130,13 +131,13 @@ docker compose -p ai-elevate-weather run --rm --entrypoint python tests \
   --frontend-mcp-url http://127.0.0.1:8002/mcp
 ```
 
-The frontend's pre-existing peer-lock inconsistency prevents a clean `npm ci` on this host; the verified no-lock-change workaround is documented in the serviceREADME. It remains a separate reproducibility issue. Existing application hardening/UI redesign was not undertaken. Changes remain the additive Weather panel, opt-in cached pitch defaults and tiny Link lint fix needed for checks.
+The frontend's pre-existing `npm ci` failure was reproduced on both upstream and feature clean checkouts, then repaired without upgrading retained packages. See the merge-readiness follow-up below; upstream peer-range incompatibilities still require the documented project install mode. Existing application hardening/UI redesign was not undertaken. Changes remain the additive Weather panel, opt-in cached pitch defaults and tiny Link lint fix needed for checks.
 
 [License audit](WEATHER_LICENSE_AUDIT.md) explicitly records the missing application license and Docker Desktop exception. No license was chosen on behalf of the owner. [Installed dependency metadata](weather-ml/dependency-licenses.json) and preserved upstream notices are evidence, not a complete binary redistribution clearance. Fresh live observations, independent weather validation, AMD64 execution and a full license decision/review remain **NOT VERIFIED**. The verified deliverable is local historical replay and its working MCP/map integration, not an official/current weather service.
 
 ## Local branch qualification and cached pitch
 
-Latest upstream was fetched and merged **into the feature branch locally**. The one agent-instructions conflict was resolved by retaining the Menara cards/self-heal instructions and adding explicit distinctions between real Chronos ML tools and synthetic Menara Weather scenario tools. Backend/NetOps files and Menara toolkit/routes are unchanged relative to the fetched upstream. Production build includes all 18 routes; Menara server workflows were not exercised because their services were not started for this Weather scope.
+The then-current bdabf62 upstream was fetched and merged **into the feature branch locally** during the initial qualification. The one agent-instructions conflict was resolved by retaining the Menara cards/self-heal instructions and adding explicit distinctions between real Chronos ML tools and synthetic Menara Weather scenario tools. Backend/NetOps files and Menara toolkit/routes are unchanged relative to the fetched upstream. Production build includes all 18 routes; Menara server workflows were not exercised because their services were not started for this Weather scope.
 
 The opt-in pitch build uses `NEXT_PUBLIC_WEATHER_DEMO_MODE=1`, the existing local-model ID and Kepler `no_map`. Four coarse country geometries are bundled from Natural Earth, pinned revision `ca96624a56bd078437bca8184e78163e5039ad19`, public domain, local SHA256 `93d31bf3cd11e6e56063be2cc83052e7f30677e44f2a40bf56f01fdb4d8121af`. Normal CARTO basemaps still need Internet; the prepared build self-hosts fonts. Attribution links need Internet only when opened. Full browser air-gap testing is **NOT VERIFIED**; actual Chronos `--network none` checks passed, and the existing local agent returned real MCP forecasts while the frontend server's non-local socket connections were explicitly prohibited during verification.
 
@@ -164,3 +165,27 @@ gh pr create --repo izzhamburhan/ai-elevate --base main --head feat/weather-ml-m
 Do not run a remote merge until separately approved. Re-fetching and merging above affects only this feature branch; no force push or direct push to main is needed. All model weights, Parquet datasets, NetOps databases, dependency environments and secrets remain outside committed source.
 
 Final local check: `bash weather-ml-mcp/scripts/demo.sh check` passed real rainfall/temperature at every horizon, deterministic repeated replay, all six tools, NetOps joins, GeoJSON, cached metrics, frontend proxy/connector, `no_map`/local-outline assertions and selective layer visibility preservation. The browser Layers tab retained cities (52 rows), local outlines (four rows) and forecast/site data (132 rows). Existing NetOps/Kepler discovery still returned 62/12 tools. Final native image reported Linux aarch64, Python 3.12.15, torch 2.9.1+cpu and CUDA unavailable; `/healthz`/`/readyz` returned 200. Weather used 356.6 MiB of its 2.5 GiB limit. All four unrelated container IDs were unchanged and SSH still listened on localhost 8001.
+
+## Merge-readiness follow-up: clean npm installation and owner licensing
+
+On 12 October 2026, isolated archives of `origin/main` and pre-repair feature HEAD had identical lock SHA256 `7c281dc90b75b85dfe0d2317ac4ac6bc6fed66266d9928f5bb256c2180b2d527`. Weather ML had changed only a test script in package.json, with no dependency/lock change. Both fresh checkouts failed default `npm ci` with the same EUSAGE: omitted Emnapi and React-18 peer/type entries. Legacy resolution alone still failed on a missing Emnapi runtime entry. This establishes that the failure existed upstream.
+
+The bounded repair declares `@deck.gl/mapbox@9.3.11` explicitly (already pinned by the upstream override and used by the qualified runtime workaround), commits project `.npmrc` with `legacy-peer-deps=true`, and regenerates the lock with that existing install mode. Across 1,593 retained lock entries, **zero versions or integrity hashes changed**. Seven additions record missing optional WASM dependencies; 34 removals discard unused peer entries and their subtrees. No unrelated dependency upgrade, application feature or production hardening was performed. npm's [official clean-install guidance](https://docs.npmjs.com/cli/v10/commands/npm-ci/) requires matching the lock's peer-resolution mode.
+
+| Follow-up criterion | Result | Actual evidence |
+|---|---|---|
+| Failure existed on upstream main | PASS | Identical lock hashes and matching clean-checkout EUSAGE failures |
+| Repaired clean `npm ci` | PASS | Fresh isolated tree: 1,516 packages installed in 52s; existing `@tippyjs/react@4.2.6` compatibility patch applied |
+| No retained dependency upgrades | PASS | Programmatic version/integrity comparison of all 1,593 retained entries; existing React19/Next/Kepler/deck/luma pins unchanged |
+| Original 54 tests preserved | PASS | 46 Docker backend tests (5.74s) and eight frontend tests from the clean install |
+| Full lint / production build and TypeScript | PASS | Fresh clean install; all 18 routes, including Menara, compiled |
+| Clean-install Kepler / MCP / forecast regression | PASS | Browser renders local outlines and real 132-point weather/site overlay; all six tools, all forecast horizons, proxy/connector and selective layer visibility smoke pass on temporary localhost3002 |
+| Existing user services preserved | PASS | Existing app3001/Weather8002/NetOps8000 kept running; only temporary verification app3002 started and stopped; unrelated containers/databases/tunnel untouched |
+| Strict peer compatibility fully resolved | NOT VERIFIED | Existing React19/Kepler/Mapbox peer ranges remain incompatible; qualified project resolution mode is deliberate, not a dependency modernization |
+| Application/license ownership approved | NOT VERIFIED | No application license assigned; owner recommendation saved in license audit |
+
+Technical qualification supports publication as an explicitly experimental historical-replay hackathon MVP. An open-source application release still needs owner/contributor-rights approval and a license decision; full binary/transitive redistribution review remains unverified. The license audit recommends owner-approved Apache-2.0 while retaining separate model/software notices and data attribution. No publishing command was run.
+
+During the final read-only upstream check, `origin/main` advanced from bdabf62 to **2fa8e62** (marketing landing/workspace routing and Menara human-approval changes). Its package-lock SHA256 is unchanged, so the clean-install diagnosis applies to the new main as well; it still contains no root application license. A merge preview, without changing branch/index/worktree, reports a conflict in `frontend/src/components/map/panels/assistant-panel.tsx`: upstream landing-page model handoff overlaps the opt-in local demo default. Current working source has no conflict markers or merge in progress.
+
+**Remaining integration blocker:** synchronize the feature branch with that new main only after authorization, preserve the upstream landing prompt/model handoff alongside the demo fallback, then rerun qualification. The intended model initialization is `useState(() => landing.modelId ?? weatherDemoChatModel(DEFAULT_CHAT_MODEL_ID))` alongside upstream's landing state/effect. Update the demo workspace URL to `/workspace` when that upstream routing change is incorporated. The combined new-main tree has **NOT VERIFIED** tests/build/map behavior; the 54 passing tests and clean-install qualification above apply to the current feature source. No new main changes were applied, and no actual merge or publication occurred in this follow-up.

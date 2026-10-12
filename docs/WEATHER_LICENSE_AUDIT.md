@@ -27,3 +27,11 @@ For weather displays/exports, show [Weather data by Open-Meteo](https://open-met
 Keep the acquired model card, Apache license files, bootstrap revision/hash manifest, dataset manifests, dependency inventory, and generated evaluation report together when packaging a demo. `weather-ml-mcp/ATTRIBUTIONS.md` supplies concise credits; it is not a substitute for full license texts. The Docker Desktop exception and unresolved root license must remain visible in the implementation acceptance report.
 
 The model card describes a roughly 28M-parameter pretrained time-series model and a DataFrame forecast interface. Local CPU inference uses that interface. The training corpus includes public time-series datasets; the card does not establish a definitive no-overlap cutoff for this Malaysian replay. Do not infer that a later replay date proves absence of pretraining leakage.
+
+## Recommendation for the repository owner (not an assigned license)
+
+Recommend **Apache-2.0 for original application code**, after owner approval and confirmation of the contributors' authority to license their work. It allows permissive reuse and includes an explicit patent grant, matching the selected Chronos/FastMCP ecosystem. See the [official Apache license, sections 2–4](https://www.apache.org/licenses/LICENSE-2.0) and [GitHub repository licensing guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository).
+
+Retain third-party LICENSE/NOTICE materials and their separate terms; a repository license does not replace them. Keep Open-Meteo/ERA5 data under its CC BY 4.0 attribution and Natural Earth geography under its public-domain provenance. Model/data caches are not committed. No root/service license, copyright holder declaration or application-license metadata was added. Full contributor-rights and binary/transitive redistribution verification remains **NOT VERIFIED**.
+
+The authorized owner can review publication as a clearly labeled experimental hackathon MVP; this audit does not establish rights for an open-source application release. Until the license decision is approved, describe the licensed upstream software/model components accurately and do not call the entire application open-source licensed.

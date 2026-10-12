@@ -3,12 +3,14 @@
 Next.js + kepler.gl map workspace with an AI chat assistant in the side panel.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local   # then fill in keys
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Clean installation was verified with Node 22.23.2 / npm 10.9.8. Keep the project `.npmrc`: the existing React 19/Kepler dependency graph uses legacy peer resolution. The required map adapter is explicitly pinned to the existing `@deck.gl/mapbox@9.3.11`; the lock repair changes no retained package versions. Existing upstream peer-range conflicts remain a hackathon dependency limitation.
 
 ## AI chat assistant
 
