@@ -4,7 +4,7 @@ import { defineToolkit } from "@assistant-ui/react";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
-import { AreaCard } from "@/components/map/panels/area-card";
+import { AreaCard, type Section } from "@/components/map/panels/area-card";
 import { HealPanel } from "@/components/map/panels/heal-panel";
 import { pointInRing } from "@/lib/menara/geometry";
 
@@ -47,45 +47,74 @@ export const menaraToolkit = defineToolkit({
     type: "frontend",
     display: "standalone",
     description:
-      "Draw a place on the map and show its towers, the people there, what they use, and each subscriber's trail and routine, as an interactive " +
-      "card. Use it whenever the user asks about towers, people or usage in a place, town, district or neighbourhood (for example " +
-      "\"list the towers in Cyberjaya\", \"what is around Kota Bharu\", \"towers within 5 km of KLCC\"). " +
-      "Give `place` as the name only (Cyberjaya, Kota Bharu, Selangor...): the real boundary is drawn and only the towers inside it are listed. " +
+      "Draw a place on the map and show what the user asked about it as an interactive card. Use it whenever the user asks about towers, " +
+      "subscribers (people, users, trails, movements) or usage (apps, data, what people use) in a place, town, district, neighbourhood or radius " +
+      "(for example \"list the towers in Cyberjaya\", \"towers and subscribers in Gombak\", \"what do people use around KLCC\"). " +
+      "`show` lists ONLY the parts the user asked for: [\"towers\"] when they ask about towers or sites; add \"subscribers\" only when they " +
+      "ask about subscribers, people, users or trails; add \"usage\" only when they ask about apps, data or usage. Use all three only when " +
+      "they ask for everything. " +
+      "Give `place` as the name only (Cyberjaya, Gombak, Selangor...): the real boundary is drawn and only what is inside it is listed. " +
       "Give `radius_km` only when the user asks for a distance; then a circle of that radius is drawn around the place. " +
       "Give `lat` and `lng` only for a point that is not an administrative area (for example KLCC 3.157,101.713). " +
-      "The answer shows the card; summarise it in a sentence or two instead of repeating the rows, and tell the user they can click a subscriber for the trail.",
+      "The answer shows the card; summarise it in a sentence or two instead of repeating the rows.",
     parameters: z.object({
       place: z.string().describe("Name of the place, e.g. Cyberjaya"),
+      show: z
+        .array(z.enum(["towers", "subscribers", "usage"]))
+        .min(1)
+        .describe("Only the parts the user asked for, e.g. [\"towers\"] or [\"towers\", \"subscribers\"]"),
       radius_km: z.number().min(1).max(50).optional().describe("Only when the user gives a distance"),
       lat: z.number().optional().describe("Only for a point that is not an administrative area"),
       lng: z.number().optional().describe("Only for a point that is not an administrative area"),
     }),
-    execute: async ({ place, radius_km, lat, lng }) => {
+    execute: async ({ place, show, radius_km, lat, lng }) => {
+      const want = new Set<Section>(show?.length ? show : ["towers"]);
       const resolved = await post<ResolvedPlace>("/api/menara/place", { name: place, radius_km, lat, lng });
       const { center } = resolved;
-      const [towers, people, apps] = await Promise.all([
-        menara<{ towers: { enodeb_name: string; status: string; lat: number; lng: number }[] }>("tower_list_in_radius", { lat: center.lat, lng: center.lng, radius_km: resolved.radius_km, limit: 200 }),
-        menara<{ towers: { enodeb_name: string; subscribers_est: number }[] }>("user_list_in_area", { lat: center.lat, lng: center.lng, radius_km: resolved.radius_km, limit: 1 }),
-        menara<{ apps: { name: string; reach_pct: number }[] }>("usage_top_apps_in_area", { lat: center.lat, lng: center.lng, radius_km: resolved.radius_km, limit: 3 }).catch(() => null),
-      ]);
+      const towers = await menara<{ towers: { enodeb_name: string; status: string; lat: number; lng: number }[] }>("tower_list_in_radius", {
+        lat: center.lat,
+        lng: center.lng,
+        radius_km: resolved.radius_km,
+        limit: 200,
+      });
       const within = resolved.rings.length ? towers.towers.filter((t) => resolved.rings.some((ring) => pointInRing(ring, t.lat, t.lng))) : towers.towers;
-      const names = new Set(within.map((t) => t.enodeb_name));
-      return {
+      const summary: Record<string, unknown> = {
         place: resolved.name,
         level: resolved.level,
         state: resolved.state,
         shape: resolved.rings.length ? "boundary" : `circle of ${resolved.radius_km} km`,
-        towers: within.length,
-        degraded: within.filter((t) => t.status === "DEGRADED").length,
-        down: within.filter((t) => t.status === "DOWN").length,
-        down_towers: within.filter((t) => t.status !== "UP").map((t) => `${t.enodeb_name} ${t.status}`),
-        people_estimate: people.towers.filter((t) => names.has(t.enodeb_name)).reduce((sum, t) => sum + t.subscribers_est, 0),
-        top_apps: apps?.apps.map((a) => `${a.name} (${a.reach_pct}% reach)`) ?? [],
-        note: "A card with the map outline, the towers, people, trails and routines is shown to the user.",
+        shown: [...want],
       };
+      if (want.has("towers")) {
+        summary.towers = within.length;
+        summary.degraded = within.filter((t) => t.status === "DEGRADED").length;
+        summary.down = within.filter((t) => t.status === "DOWN").length;
+        summary.not_up = within.filter((t) => t.status !== "UP").map((t) => `${t.enodeb_name} ${t.status}`);
+      }
+      if (want.has("subscribers")) {
+        const loads = await Promise.all(
+          within.slice(0, 25).map((t) => menara<{ towers: { subscribers_est: number }[] }>("user_list_on_tower", { enodeb_name: t.enodeb_name, limit: 1 }).catch(() => null)),
+        );
+        summary.people_estimate = loads.reduce((sum, r) => sum + (r?.towers?.[0]?.subscribers_est ?? 0), 0);
+        summary.hint = "The user can click a subscriber in the card for the 24 h trail and 4-week routine.";
+      }
+      if (want.has("usage")) {
+        const apps = await menara<{ apps: { name: string; reach_pct: number }[] }>("usage_top_apps_in_area", {
+          lat: center.lat,
+          lng: center.lng,
+          radius_km: resolved.radius_km,
+          limit: 3,
+        }).catch(() => null);
+        summary.top_apps = apps?.apps.map((a) => `${a.name} (${a.reach_pct}% reach)`) ?? [];
+      }
+      return summary;
     },
     render: ({ args, result }) =>
-      result ? <AreaCard place={args.place} lat={args.lat} lng={args.lng} radiusKm={args.radius_km} /> : <Working text={`Finding ${args.place ?? "the place"}…`} />,
+      result ? (
+        <AreaCard place={args.place} lat={args.lat} lng={args.lng} radiusKm={args.radius_km} show={args.show} />
+      ) : (
+        <Working text={`Finding ${args.place ?? "the place"}…`} />
+      ),
   },
 
   describe_trail: {

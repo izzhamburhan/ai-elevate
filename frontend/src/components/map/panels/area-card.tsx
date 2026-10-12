@@ -35,6 +35,17 @@ type Apps = { apps: AppRow[]; busiest_hour: number | null };
 
 type Area = { place: Place; towers: Tower[]; inside: number; subscribers: Subscriber[]; peopleEst: number; sampled: number };
 
+const OUTLINE_COLOR = "#7c5cff";
+const TRAIL_COLOR = "#ec4899";
+// kepler draws a point of radius r at about r / 5 pixels below zoom 14, so these are roughly 6, 9, 7 and 11 px
+const TOWER_RADIUS = { UP: 30, DEGRADED: 45, DOWN: 45 } as Record<string, number>;
+const STOP_RADIUS = 35;
+const ROUTINE_RADIUS = 55;
+const PER_TOWER_SAMPLE = 6;
+const MAX_TOWERS_SAMPLED = 25;
+
+export type Section = "towers" | "subscribers" | "usage";
+
 const STATUS_COLOR: Record<string, string> = { UP: "#22c55e", DEGRADED: "#f59e0b", DOWN: "#ef4444" };
 const LABEL_STYLE: Record<string, string> = {
   GOOD: "bg-emerald-500/15 text-emerald-500",
@@ -43,9 +54,9 @@ const LABEL_STYLE: Record<string, string> = {
   NO_SERVICE: "bg-red-500/15 text-red-500",
 };
 const ROUTINE_STYLE: Record<Routine["kind"], { chip: string; color: string }> = {
-  home: { chip: "bg-sky-500/15 text-sky-400", color: "#3b82f6" },
-  weekday: { chip: "bg-amber-500/15 text-amber-400", color: "#f59e0b" },
-  weekend: { chip: "bg-emerald-500/15 text-emerald-400", color: "#22c55e" },
+  home: { chip: "bg-sky-500/15 text-sky-400", color: "#38bdf8" },
+  weekday: { chip: "bg-yellow-500/15 text-yellow-400", color: "#facc15" },
+  weekend: { chip: "bg-teal-500/15 text-teal-400", color: "#2dd4bf" },
 };
 
 async function menara<T>(tool: string, args: Record<string, unknown>): Promise<T> {
@@ -89,9 +100,9 @@ function viewFor([west, south, east, north]: [number, number, number, number]) {
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
-    <div className="rounded-lg border bg-card px-2.5 py-1.5">
-      <div className={cn("text-sm font-semibold tabular-nums", tone)}>{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+    <div className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+      <div className={cn("whitespace-nowrap text-[13px] font-semibold tabular-nums", tone)}>{value}</div>
+      <div className="truncate text-[10.5px] text-muted-foreground">{label}</div>
     </div>
   );
 }
@@ -103,7 +114,20 @@ const levelWord = (p: Place) => (p.level === "point" ? "place" : p.level);
  * its towers are dots coloured by status, and the card lists them with the people there, what they use and, per
  * subscriber, the last 24 hours' trail and the 4-week routine. "Explain this trail" asks the chat model to word it.
  */
-export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: number; lng?: number; radiusKm?: number }) {
+export function AreaCard({
+  place,
+  lat,
+  lng,
+  radiusKm,
+  show,
+}: {
+  place?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  show?: Section[];
+}) {
+  const want = new Set<Section>(show?.length ? show : ["towers"]);
   const store = useStore() as unknown as KeplerStore;
   const aui = useAui();
   const [area, setArea] = useState<Area | null>(null);
@@ -155,34 +179,41 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
       });
       const resolved = (await res.json()) as Place & { error?: string };
       if (!res.ok) throw new Error(resolved.error ?? "Could not find that place.");
-      const [towerData, peopleData] = await Promise.all([
-        menara<{ towers: Tower[] }>("tower_list_in_radius", { lat: resolved.center.lat, lng: resolved.center.lng, radius_km: resolved.radius_km, limit: 200 }),
-        menara<{ subscribers: Subscriber[]; towers: TowerLoad[]; subscribers_total: number }>("user_list_in_area", {
-          lat: resolved.center.lat,
-          lng: resolved.center.lng,
-          radius_km: resolved.radius_km,
-          limit: 200,
-        }),
-      ]);
+      const towerData = await menara<{ towers: Tower[] }>("tower_list_in_radius", {
+        lat: resolved.center.lat,
+        lng: resolved.center.lng,
+        radius_km: resolved.radius_km,
+        limit: 200,
+      });
       // inside the real boundary when there is one; otherwise everything in the circle
       const within = resolved.rings.length
         ? towerData.towers.filter((t) => resolved.rings.some((ring) => pointInRing(ring, t.lat, t.lng)))
         : towerData.towers;
-      const names = new Set(within.map((t) => t.enodeb_name));
-      const subscribers = peopleData.subscribers.filter((s) => names.has(s.enodeb_name));
-      const peopleEst = (peopleData.towers ?? []).filter((t) => names.has(t.enodeb_name)).reduce((sum, t) => sum + t.subscribers_est, 0);
+
+      // people are sampled per tower inside the area, so a large area does not fill the sample from outside it
+      let subscribers: Subscriber[] = [];
+      let peopleEst = 0;
+      if (want.has("subscribers")) {
+        const perTower = await Promise.all(
+          within.slice(0, MAX_TOWERS_SAMPLED).map((t) =>
+            menara<{ subscribers: Subscriber[]; towers: TowerLoad[] }>("user_list_on_tower", { enodeb_name: t.enodeb_name, limit: PER_TOWER_SAMPLE }).catch(() => null),
+          ),
+        );
+        subscribers = perTower.flatMap((r) => r?.subscribers ?? []);
+        peopleEst = perTower.reduce((sum, r) => sum + (r?.towers?.[0]?.subscribers_est ?? 0), 0);
+      }
 
       removeOurs(["area_", "trail_"]);
       const outline = resolved.rings.length ? resolved.rings : [circleRing(resolved.center.lat, resolved.center.lng, resolved.radius_km)];
-      await addLines("area_boundary", `${resolved.name} outline`, segmentsOf(outline), "#7c5cff", 3);
-      for (const status of ["UP", "DEGRADED", "DOWN"]) {
+      await addLines("area_boundary", `${resolved.name} outline`, segmentsOf(outline), OUTLINE_COLOR, 3);
+      for (const status of want.has("towers") ? ["UP", "DEGRADED", "DOWN"] : []) {
         const rows = within.filter((t) => t.status === status).map((t) => ({ name: t.enodeb_name, lat: t.lat, lng: t.lng, status }));
-        await addPoints(`area_${status.toLowerCase()}`, `Towers ${status}`, rows, STATUS_COLOR[status], status === "UP" ? 9 : 13);
+        await addPoints(`area_${status.toLowerCase()}`, `Towers ${status}`, rows, STATUS_COLOR[status], TOWER_RADIUS[status]);
       }
       runKeplerCommand(store, MAP_ID, "set_view", viewFor(resolved.bbox));
 
-      setArea({ place: resolved, towers: within, inside: within.length, subscribers: subscribers.slice(0, 40), peopleEst, sampled: peopleData.subscribers_total ?? subscribers.length });
-      await loadApps(resolved, "users");
+      setArea({ place: resolved, towers: within, inside: within.length, subscribers: subscribers.slice(0, 60), peopleEst, sampled: subscribers.length });
+      if (want.has("usage")) await loadApps(resolved, "users");
     } catch (e) {
       console.error("[area] failed", e instanceof Error ? e.stack : e);
       setError(e instanceof Error ? e.message : String(e));
@@ -213,17 +244,17 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
       setTrail({ hash, segments });
       setRoutines(routineReply.routines ?? []);
       removeOurs(["trail_"]);
-      await addPoints("trail_stops", "Trail stops", segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })), "#7c5cff", 16);
+      await addPoints("trail_stops", "Trail stops", segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })), TRAIL_COLOR, STOP_RADIUS);
       await addLines(
         "trail_lines",
         "Trail",
         segments.slice(1).map((s, i) => ({ lat0: segments[i].cell_lat, lng0: segments[i].cell_lng, lat1: s.cell_lat, lng1: s.cell_lng })),
-        "#7c5cff",
+        TRAIL_COLOR,
         3,
       );
       for (const kind of ["home", "weekday", "weekend"] as const) {
         const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
-        await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, 24);
+        await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, ROUTINE_RADIUS);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -256,13 +287,18 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
 
-      <div className="grid grid-cols-4 gap-2">
-        <Stat label="Towers" value={area.inside} />
-        <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber-500" : undefined} />
-        <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red-500" : undefined} />
-        <Stat label="People (est.)" value={area.peopleEst.toLocaleString()} />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(4.5rem,1fr))] gap-2">
+        {want.has("towers") ? (
+          <>
+            <Stat label="Towers" value={area.inside} />
+            <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber-500" : undefined} />
+            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red-500" : undefined} />
+          </>
+        ) : null}
+        {want.has("subscribers") ? <Stat label="People (est.)" value={area.peopleEst.toLocaleString()} /> : null}
       </div>
 
+      {want.has("towers") ? (
       <section>
         <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Towers {p.rings.length ? `inside ${p.name}` : "in the circle"}</h3>
         <ul className="flex max-h-40 flex-col gap-0.5 overflow-y-auto text-[12px]">
@@ -277,7 +313,9 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
           {area.towers.length === 0 ? <li className="px-1.5 text-muted-foreground">No towers found here.</li> : null}
         </ul>
       </section>
+      ) : null}
 
+      {want.has("subscribers") ? (
       <section>
         <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
         <ul className="flex max-h-44 flex-col gap-0.5 overflow-y-auto text-[12px]">
@@ -298,8 +336,9 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
           {area.subscribers.length === 0 ? <li className="px-1.5 text-muted-foreground">No subscribers shown (groups under 5 are withheld).</li> : null}
         </ul>
       </section>
+      ) : null}
 
-      {trail ? (
+      {want.has("subscribers") && trail ? (
         <section>
           <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
             <Route className="size-3.5" /> Trail of {trail.hash.slice(0, 8)} (cells only, 24 h)
@@ -339,7 +378,7 @@ export function AreaCard({ place, lat, lng, radiusKm }: { place?: string; lat?: 
         </section>
       ) : null}
 
-      {apps?.apps.length ? (
+      {want.has("usage") && apps?.apps.length ? (
         <section>
           <div className="mb-1 flex items-center justify-between">
             <h3 className="text-[12px] font-semibold text-muted-foreground">
