@@ -41,7 +41,8 @@ type HealState = {
 };
 
 const SERIES_COLORS = ["#7c5cff", "#f59e0b", "#10b981", "#38bdf8"];
-const MAP_COLORS = { failed: "#ef4444", hot: "#f97316", ok: "#22c55e", tilted: "#a855f7", link: "#f59e0b" };
+const MAP_COLORS = { failed: "#ef4444", degraded: "#eab308", hot: "#f97316", ok: "#22c55e", tilted: "#a855f7", link: "#f59e0b" };
+const towerColor = (status: string) => (status === "UP" ? MAP_COLORS.ok : status === "DEGRADED" ? MAP_COLORS.degraded : MAP_COLORS.failed);
 
 async function post<T>(url: string, body: unknown = {}): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -53,7 +54,7 @@ async function post<T>(url: string, body: unknown = {}): Promise<T> {
 function Chart({ state, width = 360, height = 170 }: { state: HealState; width?: number; height?: number }) {
   const towers = state.watched;
   if (!towers.length) {
-    return <p className="text-[12px] text-muted-foreground">The chart appears once a neighbour of the failed tower runs hot or is re-tilted.</p>;
+    return <p className="text-[12px] text-muted-foreground">No load data for the neighbours yet.</p>;
   }
   const all = towers.flatMap((t) => state.series[t]);
   const minT = Math.min(...all.map((p) => p.t_min));
@@ -257,12 +258,16 @@ export function HealPanel({ runId }: { runId?: string }) {
           2,
         );
       }
-      const hot = neighbours.filter((n) => !n.tilted && (n.prb_now ?? 0) >= state.threshold);
-      const ok = neighbours.filter((n) => !n.tilted && (n.prb_now ?? 0) < state.threshold);
+      const up = neighbours.filter((n) => n.status === "UP");
+      const hot = up.filter((n) => !n.tilted && (n.prb_now ?? 0) >= state.threshold);
+      const ok = up.filter((n) => !n.tilted && (n.prb_now ?? 0) < state.threshold);
       await draw.addPoints("heal_ok", "Neighbours OK", ok.map(row), MAP_COLORS.ok, 40);
+      // neighbours that are faulty themselves
+      await draw.addPoints("heal_down", "Neighbours down", neighbours.filter((n) => n.status === "DOWN").map(row), MAP_COLORS.failed, 40);
+      await draw.addPoints("heal_degraded", "Neighbours degraded", neighbours.filter((n) => n.status === "DEGRADED").map(row), MAP_COLORS.degraded, 40);
       await draw.addPoints("heal_hot", "Neighbours overloaded", hot.map(row), MAP_COLORS.hot, 55);
       await draw.addPoints("heal_tilted", "Neighbours re-tilted", neighbours.filter((n) => n.tilted).map(row), MAP_COLORS.tilted, 60);
-      if (failed) await draw.addPoints("heal_failed", `${failed.name} (${failed.status})`, [row(failed)], failed.status === "UP" ? MAP_COLORS.ok : MAP_COLORS.failed, 75);
+      if (failed) await draw.addPoints("heal_failed", `${failed.name} (${failed.status})`, [row(failed)], towerColor(failed.status), 75);
       if (!framed.current) {
         framed.current = true;
         const lngs = towers.map((t) => t.lng);
@@ -362,7 +367,7 @@ export function HealPanel({ runId }: { runId?: string }) {
           </Button>
         )
       ) : null}
-      <p className="text-[11px] text-muted-foreground">Synthetic data. Nothing real-world is changed; risky steps wait for your approval.</p>
+      <p className="text-[11px] text-muted-foreground">Synthetic data. Nothing real-world is changed; every action waits for your approval.</p>
 
       {owns && open && typeof document !== "undefined"
         ? createPortal(
@@ -393,9 +398,13 @@ export function HealPanel({ runId }: { runId?: string }) {
               {state ? (
                 <>
                   <div className="grid grid-cols-4 gap-2">
+                    <Tile
+                      label="Tower"
+                      value={(state.failed_status ?? "?").toLowerCase()}
+                      tone={state.failed_status === "UP" ? "text-emerald-500" : state.failed_status === "DEGRADED" ? "text-yellow-500" : "text-red-500"}
+                    />
                     <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red-500" : undefined} />
                     <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-emerald-500" : undefined} />
-                    <Tile label="Tilts tried" value={String(state.changes.length)} />
                     <Tile label="Incident" value={(state.incident?.status ?? "none").toLowerCase()} tone={state.incident?.status === "RESOLVED" ? "text-emerald-500" : undefined} />
                   </div>
                   <section>
@@ -404,7 +413,8 @@ export function HealPanel({ runId }: { runId?: string }) {
                   </section>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                     {[
-                      ["Failed tower", MAP_COLORS.failed],
+                      ["Down", MAP_COLORS.failed],
+                      ["Degraded", MAP_COLORS.degraded],
                       ["Overloaded", MAP_COLORS.hot],
                       ["OK", MAP_COLORS.ok],
                       ["Re-tilted", MAP_COLORS.tilted],

@@ -12,7 +12,7 @@ import { pointInRing } from "@/lib/menara/geometry";
  * Chat tools whose results render as cards inside the answer:
  *  - show_area: draws a place on the map and shows its towers, people, trails, routines and app usage
  *  - describe_trail: gives the model the facts to put one subscriber's trail into words
- *  - run_self_heal: runs the flood self-heal replay and shows the live 8-stage loop and load chart
+ *  - run_self_heal: heals a DOWN or DEGRADED tower and shows the live 8-stage loop, the map and the load chart
  * They run in the browser, so the cards and the map are in the same place as the chat.
  */
 
@@ -132,20 +132,28 @@ export const menaraToolkit = defineToolkit({
     type: "frontend",
     display: "standalone",
     description:
-      "Run the self-heal replay of the flood incident (detect, diagnose, simulate, approve, apply, verify, roll back, recover) and show it " +
-      "live: the loop in the chat, the incident on the map and the load chart at the bottom right. Use it when the user asks to run, show or " +
-      "explain self-healing, the flood incident or the closed loop. Human in the loop: every risky step waits for the user to approve or " +
-      "reject in the card; it cannot be skipped. The card shows every step, so do not describe them yourself; add at most one sentence, " +
-      "and remind the user to approve in the card.",
-    parameters: z.object({}),
-    execute: async () => {
-      const started = await post<{ runId: string; existing: boolean }>("/api/menara/heal", {});
+      "Self-heal a tower that is DOWN or DEGRADED and show it live (detect, diagnose, simulate, approve, apply, verify, roll back, " +
+      "recover): the loop in the chat, the tower and its neighbours on the map and the load chart at the bottom right. It reads the " +
+      "tower's real status, alarm, power and flood data and picks the fix: tilt overloaded neighbours, soft-reset a hung cell, send a " +
+      "drone or a field crew. Use it when the user asks to heal, fix or self-heal a tower, an outage, the flood incident or the faulty " +
+      "towers. Give `tower` as the eNodeB name (e.g. KLCC-4721) when the user names one or after you found it (tower_get_alarms lists the " +
+      "towers with active alarms); omit it to heal the most urgent faulty tower (the flood tower KKRI-0142 while it is down). Human in the " +
+      "loop: every action waits for the user to approve or reject in the card; it cannot be skipped. The card shows every step, so do " +
+      "not describe them yourself; add at most one sentence and remind the user to approve in the card.",
+    parameters: z.object({
+      tower: z.string().optional().describe("eNodeB name of the faulty tower, e.g. KLCC-4721. Omit for the most urgent one."),
+    }),
+    execute: async ({ tower }) => {
+      const started = await post<{ runId: string; tower: string; existing: boolean }>("/api/menara/heal", { tower });
       return {
         run_id: started.runId,
+        tower: started.tower,
         already_running: started.existing,
-        note: "The self-heal card is shown to the user. A human must approve each risky step in the card (human in the loop).",
+        note: started.existing
+          ? `A self-heal run on ${started.tower} is already going; the card shows it. Finish or reject it before healing another tower.`
+          : "The self-heal card is shown to the user. A human must approve each action in the card (human in the loop).",
       };
     },
-    render: ({ result }) => (result ? <HealPanel runId={(result as { run_id?: string }).run_id} /> : <Working text="Starting the self-heal replay…" />),
+    render: ({ result }) => (result ? <HealPanel runId={(result as { run_id?: string }).run_id} /> : <Working text="Starting the self-heal…" />),
   },
 });
