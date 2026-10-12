@@ -72,6 +72,32 @@ For the installed local thinking model, verified agent streaming used `LOCAL_LLM
 
 For host-run NetOps, Compose uses `WEATHER_NETOPS_URL=http://host.docker.internal:8000`. Linux uses the included host-gateway mapping; a loopback-only Linux host server may need a reachable interface/address configured explicitly. If NetOps is unavailable, standalone cached location forecasts still work and the overlay reports the missing inventory.
 
+## Repeatable cached pitch
+
+After first-time bootstrap/ingestion, keep the existing NetOps server on 8000 and cached Ollama model running. These commands operate only Weather ML and this frontend; they never seed/reset a database or download model/data during startup:
+
+```bash
+cd /Users/saf/Desktop/Hackathon/ai-elevate/weather-ml-mcp
+# Prepare this production build before the pitch (font acquisition may need Internet).
+bash scripts/demo.sh build
+# Start only the cached Weather container and the frontend on localhost:3001.
+bash scripts/demo.sh start
+# In a second terminal, after opening Weather and generating its overlay:
+bash scripts/demo.sh check
+```
+
+The script defaults to the already-cached `qwen3.5:9b` agent model; set `LOCAL_LLM_MODEL` and optionally `NEXT_PUBLIC_LOCAL_LLM_LABEL` before **both build and start** to use a different installed local model. `WEATHER_DEMO_FRONTEND_PORT` changes the frontend port if necessary. An occupied port is an error; no unrelated process is stopped. The script uses the existing Docker Desktop/Compose engine, `--no-build --pull never`, and replay cutoff `2026-09-25T23:00:00Z`. It requires prebuilt images/artifacts and fails explicitly when dependencies are unavailable.
+
+`NEXT_PUBLIC_WEATHER_DEMO_MODE=1` is baked into the frontend build: it selects Kepler's `no_map` basemap, a bundled coarse public-domain Natural Earth outline, and the existing local-model picker entry. Normal mode retains CARTO basemaps, which require Internet. Next fonts are self-hosted in the prepared build. Attribution links can still require Internet when clicked. A full browser test with all Internet access disabled remains a separate verification limit; network-disabled Chronos inference is tested directly.
+
+For a deterministic walkthrough, choose **all cached locations / 24 hours**, generate the overlay, and explain the valid period **26 September 2026 UTC / 26 September 08:00–27 September 07:00 MYT**. Approximate totals are Johor Bahru **1.179 mm**, Kuala Lumpur **0.753 mm**, Penang **1.439 mm**. All exposure categories are **low** at the documented thresholds; do not invent a flood/outage scenario or lower thresholds to suggest a model success. Coordinates and telecom site IDs come from the existing synthetic NetOps inventory, joined to nearby cached real ERA5 locations. This join does not establish historical telecom incidents at the weather replay time.
+
+An agent smoke prompt is: “Call predict_rainfall for latitude 3.139, longitude 101.6869, horizon_hours 6. State the mode and model, and explain that this is historical replay.” Enable Weather ML in Connectors. The separate Menara Weather connector contains synthetic scenario data; do not portray its values as Chronos predictions.
+
+To repeat: reload the page, reopen Weather, and regenerate the same selection; use **New chat** for a fresh conversation. This clears only transient map/session state. Existing browser chat history, databases, caches and containers are retained. Stop the foreground frontend with Ctrl+C; `docker compose -p ai-elevate-weather stop weather` stops only Weather. Restart with `bash scripts/demo.sh start`. Never invoke a Menara reset or `down -v` for this walkthrough.
+
+Upstream `main` relocated NetOps source to `backend/netops-mcp/`; its code and Menara integrations are preserved. This Mac's previously running NetOps process and database under `netops-mcp/data/` were left intact. If a future NetOps restart is needed, explicitly point `NETOPS_DB_PATH` at that existing database when running the relocated source. Do not run a seeding command over the preserved database.
+
 ## Verification
 
 ```bash

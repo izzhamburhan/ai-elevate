@@ -13,7 +13,7 @@ TOOLS = {"predict_rainfall", "predict_temperature", "predict_weather_for_sites",
          "get_weather_model_status", "get_weather_forecast_geojson"}
 
 
-async def verify(url: str, frontend_url: str | None = None, frontend_mcp_url: str | None = None):
+async def verify(url: str, frontend_url: str | None = None, frontend_mcp_url: str | None = None, expected_basemap: str | None = None):
     with httpx.Client(base_url=url, timeout=90) as http:
         deadline = time.monotonic() + 60
         ready = None
@@ -49,6 +49,11 @@ async def verify(url: str, frontend_url: str | None = None, frontend_mcp_url: st
                                   "mode": validated.mode, "points": len(validated.forecasts)}))
         geography = (await client.call_tool("get_weather_forecast_geojson", {"region": "all", "horizon_hours": 6})).data
         assert geography["ok"] and geography["geojson"]["type"] == "FeatureCollection"
+        repeated = (await client.call_tool("get_weather_forecast_geojson", {"region": "all", "horizon_hours": 6})).data
+        # Wall-clock generation/freshness metadata changes; fixed replay predictions and joins do not.
+        for key in ("mode", "model", "geojson", "legend", "warnings"):
+            assert geography[key] == repeated[key], f"Repeated cached replay changed {key}"
+        print(json.dumps({"criterion": "deterministic_cached_replay", "status": "PASS"}))
         sites = []
         for feature in geography["geojson"]["features"]:
             assert feature["type"] == "Feature" and feature["geometry"]["type"] == "Point"
@@ -75,6 +80,9 @@ async def verify(url: str, frontend_url: str | None = None, frontend_mcp_url: st
             async def state():
                 return json.loads((await client.call_tool("kepler_get_map_state")).content[0].text)
             before = await state()
+            if expected_basemap:
+                assert before["basemap"] == expected_basemap, before["basemap"]
+                assert any(dataset["id"] == "weather-demo-outline" for dataset in before["datasets"]), "Cached pitch outline was not loaded"
             weather = [layer for layer in before["layers"] if layer["dataId"].startswith("weather-ml-")]
             assert weather, "Generate an overlay in the Weather panel before running browser-map verification"
             retained = {layer["id"]: layer["isVisible"] for layer in before["layers"] if layer not in weather}
@@ -96,5 +104,6 @@ if __name__ == "__main__":
     parser.add_argument("--url", default="http://weather:8001")
     parser.add_argument("--frontend-url", help="App URL with an open map tab and generated Weather overlay")
     parser.add_argument("--frontend-mcp-url", help="Weather MCP URL as reachable by the Next.js server")
+    parser.add_argument("--expected-basemap", help="Optionally verify cached pitch uses no_map and a local outline")
     args = parser.parse_args()
-    asyncio.run(verify(args.url.rstrip("/"), args.frontend_url.rstrip("/") if args.frontend_url else None, args.frontend_mcp_url))
+    asyncio.run(verify(args.url.rstrip("/"), args.frontend_url.rstrip("/") if args.frontend_url else None, args.frontend_mcp_url, args.expected_basemap))

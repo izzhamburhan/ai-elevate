@@ -6,6 +6,7 @@ import {
 import { enhanceReduxMiddleware, keplerGlReducer } from "@kepler.gl/reducers";
 
 import type { Theme } from "@/lib/theme";
+import { weatherDemoBasemap } from "@/lib/weather/demo";
 
 /**
  * Peninsular Malaysia + Sabah/Sarawak (lng ~99.6–119.3). The center sits west of
@@ -21,8 +22,10 @@ export const MALAYSIA_VIEW = {
 
 export const MAP_ID = "workspace";
 
-/** CARTO basemaps (no Mapbox token needed) matching the app theme. */
-export const BASEMAP_FOR_THEME = { light: "positron", dark: "dark-matter" } as const;
+/** Normal themes use CARTO; the opt-in cached pitch uses Kepler's network-free basemap. */
+export const BASEMAP_FOR_THEME = {
+  light: weatherDemoBasemap("light"), dark: weatherDemoBasemap("dark"),
+} as const;
 
 const makeReducers = (styleType: string) =>
   combineReducers({

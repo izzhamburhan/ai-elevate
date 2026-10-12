@@ -1,6 +1,6 @@
 # Weather ML implementation and acceptance report
 
-Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. No commits or pushes were made. The `main` reference remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. Existing NetOps source/configuration was not changed; no Hermes Ops or XSSHunter container was stopped, restarted, removed, or modified.
+Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. Implementation and integration changes are committed locally; no push, pull request or remote merge was made. The latest fetched `origin/main` (`bdabf62e67b09e9382e92e48866b45938680e94b`) is an ancestor of this branch. Its Menara integrations and NetOps relocation to `backend/netops-mcp/` are preserved. Local `main` remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. No Hermes Ops/XSSHunter container or SSH tunnel was stopped, restarted, removed, or modified.
 
 ## Delivered architecture
 
@@ -35,7 +35,7 @@ PASS means the stated check was actually performed or the delivered artifact was
 
 | Criterion | Status | Evidence / limit |
 |---|---|---|
-| Isolated requested branch, main and remote unchanged | PASS | Local feature branch; original main hash; no commits/pushes |
+| Isolated branch, current upstream preserved, no publication | PASS | Local feature commits; `origin/main` ancestor verified; Menara/backend diff empty; local main unchanged; no push/PR/remote merge |
 | Existing Next.js / Kepler / NetOps architecture retained | PASS | Additive connector/panel/service; NetOps source diff empty; existing agent still used |
 | Existing MCP tools not renamed or removed | PASS | Existing NetOps MCP discovers 62 tools; Kepler original 12 remain; six new weather names do not collide |
 | Actual pretrained ML, not LLM-generated weather | PASS | Direct Chronos tensor inference plus 108 backtest calls; existing agent returned the ML tool's structured forecast |
@@ -69,11 +69,17 @@ PASS means the stated check was actually performed or the delivered artifact was
 | Geography renders in Kepler | PASS | Automated browser generation and visible green weather/site points; saved screenshot |
 | Weather visibility / existing layers preserved | PASS | Browser switch and MCP state checks; weather hidden while existing cities layer stayed visible; datasets retained |
 | Compact panel and mode/source/unit/legend display | PASS | Browser screenshot/AX checks; table-clipping defect found and corrected |
+| Prepared pitch defaults and cached geographic context | PASS | Production browser defaults to cached qwen3.5:9b; no_map with local Natural Earth outlines and forecast points renders; light/dark toggles retain cached setting |
+| Deterministic replay across restart / unchanged network data | PASS | Exact semantic forecast hashes equal across recreation; preserved NetOps DB hash; repeated MCP call assertion |
+| Full browser pitch with all Internet disabled | NOT VERIFIED | Actual model air-gap and frontend server egress-restricted checks pass; browser Internet was not globally disabled |
+| Menara code/routes retained versus current upstream | PASS | `origin/main` ancestor; backend/toolkit/route diff empty; all routes compile |
+| Menara multi-service workflows executed | NOT VERIFIED | These unrelated services were not started/reset as part of Weather scope |
+| Cached-only startup and repeat procedure | PASS | demo.sh build/start executed with cached NetOps/Ollama; existing model/data reused; no reset/download/seed |
 | Mandatory backtesting and baseline comparisons | PASS | Chronological 60/20/20 split, rolling origins, 108 direct calls, persistence/seasonal 24 h comparison; full actual report retained |
 | MAE/RMSE/rainfall error/interval coverage by horizon | PASS | Actual metrics and diagnostics in evaluation report |
 | Inference latency and memory measured | PASS | Mean 31.6 ms / p95 35.0 ms warm inference; peak whole-evaluation RSS 535.3 MiB; runtime snapshot 349 MiB |
 | Operational forecasting skill / calibrated intervals | NOT VERIFIED | Small reanalysis replay, poor interval coverage in several cases, no independent station holdout |
-| Automated backend/frontend tests | PASS | 46 container tests + six frontend tests; frontend lint, TypeScript/production build; deployment/offline checks |
+| Automated backend/frontend tests | PASS | All original 52 tests rerun plus two pitch tests: 46 container + eight frontend; full lint and production build/TypeScript pass, including Menara routes |
 | Root repository is already open-source licensed | FAIL | No root LICENSE/COPYING; public hosting grants no license |
 | Upstream selected model/software/data licenses reviewed | PASS | Official sources; 104 installed distributions inventoried; 156 available license/NOTICE files preserved in report volume |
 | Application-license assignment and full binary redistribution audit | NOT VERIFIED | Owner approval absent; root/service license not selected; metadata inventory does not prove full wheel/image obligations |
@@ -82,7 +88,7 @@ PASS means the stated check was actually performed or the delivered artifact was
 
 ## Actual verification results
 
-Backend: `docker compose -p ai-elevate-weather run --rm tests` returned **46 passed**, including data/causality/schema/staleness/model/error/offline fixtures, all six MCP tools, HTTP health/readiness, NetOps adapter and GeoJSON. Fixtures are clearly synthetic unit-only inputs. Frontend: `npm run test:weather` returned **six passed**; full ESLint and production build/TypeScript passed. The test command retains an informational Node module-format warning rather than changing the existing package's module semantics.
+Backend: `docker compose -p ai-elevate-weather run --rm tests` returned **46 passed**, including data/causality/schema/staleness/model/error/offline fixtures, all six MCP tools, HTTP health/readiness, NetOps adapter and GeoJSON. Fixtures are clearly synthetic unit-only inputs. Frontend: `npm run test:weather` returned **eight passed** (the original six plus two pitch-default checks); full ESLint and production build/TypeScript passed. The test command retains an informational Node module-format warning rather than changing the existing package's module semantics.
 
 Real deployment verification called both forecast targets at all three horizons, site prediction, metrics, status and GeoJSON. The map response contains 132 points: three weather locations and 129 synthetic telecom sites. A separate container with networking disabled loaded cached weights/data and predicted both targets. Configuring those same stale inputs as live raised `STALE_OBSERVATIONS` without a forecast.
 
@@ -90,7 +96,9 @@ Next `/api/weather` accepted actual valid output and rejected unsupported 48 h r
 
 Browser checks verified visible forecast geography and values, table layout, MYT labels, attribution links, and the visibility switch. Existing Kepler state retained `cities`; disabling weather affected only `weather-ml-low`. Existing NetOps MCP still returned 472 4G, 104 5G and 142 MOCN sites through its original inventory tool. No existing NetOps source files or tool names changed.
 
-![Verified Weather panel and Kepler overlay](weather-ml/weather-overlay.jpg)
+![Verified cached pitch Weather panel and Kepler overlay](weather-ml/weather-pitch.jpg)
+
+The original basemap verification image is retained as `weather-ml/weather-overlay.jpg`. The cached outline initially exposed an incomplete saved GeoJSON configuration; supplying the complete native Kepler layer configuration fixed it. The rebuilt browser visibly rendered the outline and predictions afterward.
 
 ## Predictive performance and limits
 
@@ -111,7 +119,7 @@ Historical reanalysis was acquired after replay dates and may contain revisions 
 
 ## Startup, configuration and remaining work
 
-Use [serviceREADME](../weather-ml-mcp/README.md) for exact bootstrap/ingest/evaluate/Compose/verification/shutdown commands. Running development URLs are `http://127.0.0.1:8002/mcp` and `http://127.0.0.1:3001`. The frontend uses `WEATHER_ML_HTTP_URL=http://127.0.0.1:8002`; the built-in connector defaults to that port. NetOps remains independently available on 8000. Local agent verification uses `LOCAL_LLM_MODEL=qwen3.5:9b`, `LOCAL_LLM_REASONING_EFFORT=none`; the existing picker label remains its configured catalog label.
+Use [serviceREADME](../weather-ml-mcp/README.md) for exact bootstrap/ingest/evaluate/Compose/verification/shutdown commands. Running development URLs are `http://127.0.0.1:8002/mcp` and `http://127.0.0.1:3001`. The frontend uses `WEATHER_ML_HTTP_URL=http://127.0.0.1:8002`; the built-in connector defaults to that port. NetOps remains independently available on 8000. Local agent verification uses `LOCAL_LLM_MODEL=qwen3.5:9b`, `LOCAL_LLM_REASONING_EFFORT=none`; the pitch build labels that configured local model explicitly and defaults the picker to the existing local provider entry.
 
 For an open browser map with a generated overlay, the integration verification can also inspect the real Kepler bridge:
 
@@ -122,6 +130,37 @@ docker compose -p ai-elevate-weather run --rm --entrypoint python tests \
   --frontend-mcp-url http://127.0.0.1:8002/mcp
 ```
 
-The frontend's pre-existing peer-lock inconsistency prevents a clean `npm ci` on this host; the verified no-lock-change workaround is documented in the serviceREADME. It remains a separate reproducibility issue. Existing application hardening/UI redesign was not undertaken beyond the tiny Link lint fix necessary to pass checks.
+The frontend's pre-existing peer-lock inconsistency prevents a clean `npm ci` on this host; the verified no-lock-change workaround is documented in the serviceREADME. It remains a separate reproducibility issue. Existing application hardening/UI redesign was not undertaken. Changes remain the additive Weather panel, opt-in cached pitch defaults and tiny Link lint fix needed for checks.
 
 [License audit](WEATHER_LICENSE_AUDIT.md) explicitly records the missing application license and Docker Desktop exception. No license was chosen on behalf of the owner. [Installed dependency metadata](weather-ml/dependency-licenses.json) and preserved upstream notices are evidence, not a complete binary redistribution clearance. Fresh live observations, independent weather validation, AMD64 execution and a full license decision/review remain **NOT VERIFIED**. The verified deliverable is local historical replay and its working MCP/map integration, not an official/current weather service.
+
+## Local branch qualification and cached pitch
+
+Latest upstream was fetched and merged **into the feature branch locally**. The one agent-instructions conflict was resolved by retaining the Menara cards/self-heal instructions and adding explicit distinctions between real Chronos ML tools and synthetic Menara Weather scenario tools. Backend/NetOps files and Menara toolkit/routes are unchanged relative to the fetched upstream. Production build includes all 18 routes; Menara server workflows were not exercised because their services were not started for this Weather scope.
+
+The opt-in pitch build uses `NEXT_PUBLIC_WEATHER_DEMO_MODE=1`, the existing local-model ID and Kepler `no_map`. Four coarse country geometries are bundled from Natural Earth, pinned revision `ca96624a56bd078437bca8184e78163e5039ad19`, public domain, local SHA256 `93d31bf3cd11e6e56063be2cc83052e7f30677e44f2a40bf56f01fdb4d8121af`. Normal CARTO basemaps still need Internet; the prepared build self-hosts fonts. Attribution links need Internet only when opened. Full browser air-gap testing is **NOT VERIFIED**; actual Chronos `--network none` checks passed, and the existing local agent returned real MCP forecasts while the frontend server's non-local socket connections were explicitly prohibited during verification.
+
+Repeated 24h replay geography/model/legend/warnings matched exactly, including across actual Weather container recreation: semantic SHA256 `597b03de4ce72ce14eb18dd125b8d8f57ba0aa122a8dcfa034d107621861bbe2`. Generation timestamps and data-age metadata intentionally change. The existing NetOps DuckDB SHA256 remained `8937f06bc992f17b0eccc1067d57a540c489b6659061d5d96f224957542fa9c5`; no reseeding/reset took place. Three real ERA5 locations and 129 synthetic NetOps sites use valid WGS84 coordinates, stable inventory IDs and one historical forecast valid period. This static location join does not imply matching historical network incidents or an outage classifier. All selected replay exposure categories are low; demo narration must preserve that result.
+
+Use `bash weather-ml-mcp/scripts/demo.sh build` before the pitch, `... start` with existing cached NetOps/Ollama available, and `... check` after generating the Weather overlay. Startup uses only the prebuilt image and persistent artifacts (`--no-build --pull never`). Repeat by reloading the page, opening Weather and generating the same selection, or using New chat. Never reset a database, invoke Menara reset, delete volumes, or operate unrelated containers. Full commands and shutdown are in the service README.
+
+Final publishing is intentionally pending human approval and authenticated GitHub access. No publishing command has run. A reviewable future PR body is saved in `docs/WEATHER_ML_PR.md`.
+
+## Later publication commands (not executed)
+
+Authenticate GitHub CLI first (`brew install gh` if absent, then `gh auth login`). After explicit approval:
+
+```bash
+cd /Users/saf/Desktop/Hackathon/ai-elevate
+git switch feat/weather-ml-mcp
+git fetch origin
+git merge origin/main
+# If upstream changed, resolve conflicts and rerun qualification before publishing.
+git push --set-upstream origin feat/weather-ml-mcp
+gh pr create --repo izzhamburhan/ai-elevate --base main --head feat/weather-ml-mcp \
+  --title "feat: local Chronos weather ML MCP" --body-file docs/WEATHER_ML_PR.md
+```
+
+Do not run a remote merge until separately approved. Re-fetching and merging above affects only this feature branch; no force push or direct push to main is needed. All model weights, Parquet datasets, NetOps databases, dependency environments and secrets remain outside committed source.
+
+Final local check: `bash weather-ml-mcp/scripts/demo.sh check` passed real rainfall/temperature at every horizon, deterministic repeated replay, all six tools, NetOps joins, GeoJSON, cached metrics, frontend proxy/connector, `no_map`/local-outline assertions and selective layer visibility preservation. The browser Layers tab retained cities (52 rows), local outlines (four rows) and forecast/site data (132 rows). Existing NetOps/Kepler discovery still returned 62/12 tools. Final native image reported Linux aarch64, Python 3.12.15, torch 2.9.1+cpu and CUDA unavailable; `/healthz`/`/readyz` returned 200. Weather used 356.6 MiB of its 2.5 GiB limit. All four unrelated container IDs were unchanged and SSH still listened on localhost 8001.

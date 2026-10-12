@@ -13,6 +13,7 @@ import { menaraToolkit } from "@/components/chat/menara-toolkit";
 import { ConnectorsMenu } from "@/components/connectors/connectors-menu";
 import { enabledConnectorRequests } from "@/components/connectors/connectors-store";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
+import { weatherDemoChatModel } from "@/lib/weather/demo";
 
 /**
  * Chat endpoint. Defaults to the Next.js agent route; point it at another backend
@@ -53,7 +54,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     runtimeHook: useChatThreadRuntime,
     adapter: chatThreadListAdapter,
   });
-  const [modelId, setModelId] = useState(DEFAULT_CHAT_MODEL_ID);
+  const [modelId, setModelId] = useState(() => weatherDemoChatModel(DEFAULT_CHAT_MODEL_ID));
   const model = useMemo(() => ({ modelId, setModelId }), [modelId]);
 
   return (

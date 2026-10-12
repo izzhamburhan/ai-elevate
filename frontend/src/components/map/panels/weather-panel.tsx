@@ -12,6 +12,7 @@ import {
   type WeatherForecast, type WeatherHorizon, type WeatherStatus,
 } from "@/lib/weather/contracts";
 import { hasWeatherOverlay, loadWeatherOverlay, setWeatherOverlayVisible } from "@/lib/weather/map-overlay";
+import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
 
 type PanelState = { region: string; horizon: WeatherHorizon; forecast: WeatherForecast | null };
 // Keep the selected forecast when users switch between Assistant, Weather and Layers tabs.
@@ -69,6 +70,7 @@ export function WeatherPanel({ uiStateActions }: { uiStateActions?: { toggleSide
     <section aria-label="Weather intelligence" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1 font-sans text-foreground [&>*]:shrink-0">
       <div className="flex items-center gap-2"><CloudRain className="size-5 text-sky-500" /><h2 className="text-base font-semibold">Weather intelligence</h2></div>
       <p className="text-xs leading-relaxed text-muted-foreground">Local Chronos ML predictions. Experimental research output, never an official meteorological forecast.</p>
+      {WEATHER_DEMO_MODE ? <p className="text-xs leading-relaxed text-muted-foreground">Cached pitch mode · local geographic context from <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Natural Earth (public domain)</a>. Coarse outlines are for orientation.</p> : null}
       <div className="rounded-lg border bg-muted/30 p-3 text-xs">
         <div className="flex items-center justify-between"><p className="font-medium">{statusLoading ? "Checking local model…" : status?.ready ? "Local model ready" : "Local model unavailable"}</p><button type="button" aria-label="Refresh weather readiness" onClick={() => { setStatusLoading(true); setError(null); void checkStatus(); }} disabled={statusLoading || loading} className="rounded p-1 hover:bg-accent disabled:opacity-50"><RefreshCw className={`size-3.5 ${statusLoading ? "animate-spin" : ""}`} /></button></div>
         {status ? <p className="mt-1 text-muted-foreground">{status.mode === "replay" ? "Historical replay · forecasts from a past cutoff" : "Live inference · requires fresh observations"}</p> : null}
