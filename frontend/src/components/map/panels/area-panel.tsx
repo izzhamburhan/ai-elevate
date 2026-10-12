@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "react-redux";
-import { Crosshair, Loader2, Route, Search } from "lucide-react";
+import { Crosshair, Loader2, MousePointerClick, Route, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
@@ -22,6 +22,7 @@ type Subscriber = {
   cell_changes_24h: number;
 };
 type Segment = { serving_cell: string; enodeb_name: string; cell_lat: number; cell_lng: number; arrived_at: string; left_at: string | null; duration_min: number };
+type Routine = { tower: string; kind: "home" | "weekday" | "weekend"; lat: number; lng: number; sentence: string };
 type AppRow = { rank: number; name: string; category: string; users_est: number; reach_pct: number; data_share_pct: number };
 
 type Area = {
@@ -61,13 +62,45 @@ async function menara<T>(tool: string, args: Record<string, unknown>): Promise<T
   return body.data as T;
 }
 
+const ROUTINE_STYLE: Record<Routine["kind"], { chip: string; color: string }> = {
+  home: { chip: "bg-sky-500/15 text-sky-400", color: "#3b82f6" },
+  weekday: { chip: "bg-amber-500/15 text-amber-400", color: "#f59e0b" },
+  weekend: { chip: "bg-emerald-500/15 text-emerald-400", color: "#22c55e" },
+};
+
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+/** Where a click landed on the map: the view centre plus the pixel offset, turned back into lat/lng (Web Mercator, 512 px tiles). */
+function unproject(view: { latitude: number; longitude: number; zoom: number; bearing: number }, dx: number, dy: number) {
+  const world = 512 * 2 ** view.zoom;
+  const bearing = (view.bearing * Math.PI) / 180;
+  const sinLat = Math.sin((view.latitude * Math.PI) / 180);
+  const cx = ((view.longitude + 180) / 360) * world;
+  const cy = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * world;
+  const x = cx + dx * Math.cos(bearing) - dy * Math.sin(bearing);
+  const y = cy + dx * Math.sin(bearing) + dy * Math.cos(bearing);
+  return {
+    lng: (x / world) * 360 - 180,
+    lat: (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / world))) * 180) / Math.PI,
+  };
+}
 
 /** Bounding box of a circle: [west, south, east, north]. */
 function circleBounds(lat: number, lng: number, km: number): [number, number, number, number] {
   const dLat = km / 111;
   const dLng = km / (111 * Math.cos((lat * Math.PI) / 180));
   return [lng - dLng, lat - dLat, lng + dLng, lat + dLat];
+}
+
+/** A circle as a GeoJSON polygon (65 points), for the area outline on the map. */
+function circleGeoJson(lat: number, lng: number, km: number) {
+  const dLat = km / 111;
+  const dLng = km / (111 * Math.cos((lat * Math.PI) / 180));
+  const ring = Array.from({ length: 65 }, (_, i) => {
+    const angle = (i / 64) * 2 * Math.PI;
+    return [lng + dLng * Math.sin(angle), lat + dLat * Math.cos(angle)];
+  });
+  return { type: "FeatureCollection", features: [{ type: "Feature", properties: { name: "Area" }, geometry: { type: "Polygon", coordinates: [ring] } }] };
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
@@ -87,33 +120,40 @@ export function AreaPanel() {
   const [lng, setLng] = useState(PRESETS[0].lng);
   const [radius, setRadius] = useState(PRESETS[0].radius);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [area, setArea] = useState<Area | null>(null);
   const [trail, setTrail] = useState<{ hash: string; segments: Segment[] } | null>(null);
+  const [routines, setRoutines] = useState<Routine[] | null>(null);
 
-  const drawn = (ids: string[]) => {
-    for (const id of ids) {
-      try {
-        runKeplerCommand(store, MAP_ID, "remove_layer", { layerId: id });
-      } catch {
-        /* already gone */
-      }
-    }
-  };
-  const dropDataset = (dataId: string) => {
-    try {
-      runKeplerCommand(store, MAP_ID, "remove_dataset", { dataId });
-    } catch {
-      /* not loaded */
-    }
-  };
+  type MapState = { layers: { id: string; dataId: string }[]; datasets: { id: string }[] };
 
-  const clearMap = () => {
-    const layers = (runKeplerCommand(store, MAP_ID, "get_map_state", {}) as { layers: { id: string; dataId: string }[] }).layers;
-    for (const layer of layers) {
-      if (layer.dataId.startsWith("area_") || layer.dataId.startsWith("trail_")) drawn([layer.id]);
-    }
-    for (const id of ["area_up", "area_degraded", "area_down", "trail_stops", "trail_lines"]) dropDataset(id);
+  /** Removes our layers and datasets by id prefix. kepler logs an error for ids that are not loaded, so only existing ones are touched. */
+  const removeOurs = (prefixes: string[]) => {
+    const state = runKeplerCommand(store, MAP_ID, "get_map_state", {}) as MapState;
+    const ours = (id: string) => prefixes.some((p) => id.startsWith(p));
+    for (const layer of state.layers) if (ours(layer.dataId)) runKeplerCommand(store, MAP_ID, "remove_layer", { layerId: layer.id });
+    for (const dataset of state.datasets) if (ours(dataset.id)) runKeplerCommand(store, MAP_ID, "remove_dataset", { dataId: dataset.id });
+  };
+  const clearMap = () => removeOurs(["area_", "trail_"]);
+
+  const drawCircle = async (la: number, ln: number) => {
+    await runKeplerCommand(store, MAP_ID, "load_data", {
+      geojson: circleGeoJson(la, ln, radius),
+      label: "Area",
+      dataId: "area_circle",
+      centerMap: false,
+      autoCreateLayers: false,
+    });
+    await runKeplerCommand(store, MAP_ID, "add_layer", {
+      dataId: "area_circle",
+      type: "geojson",
+      label: `Area ${radius} km`,
+      columns: { geojson: "_geojson" },
+      color: "#7c5cff",
+      opacity: 0.18,
+      visConfig: { filled: true, stroked: true, strokeOpacity: 0.9, thickness: 2 },
+    });
   };
 
   const drawTowers = async (towers: Tower[]) => {
@@ -133,27 +173,31 @@ export function AreaPanel() {
     }
   };
 
-  const search = async () => {
+  const search = async (at?: { lat: number; lng: number }) => {
+    const la = at?.lat ?? lat;
+    const ln = at?.lng ?? lng;
     setBusy(true);
     setError(null);
     setTrail(null);
+    setRoutines(null);
     try {
       const [towersData, subsData, appsData] = await Promise.all([
-        menara<{ towers: Tower[] }>("tower_list_in_radius", { lat, lng, radius_km: radius, limit: 200 }),
+        menara<{ towers: Tower[] }>("tower_list_in_radius", { lat: la, lng: ln, radius_km: radius, limit: 200 }),
         menara<{ subscribers: Subscriber[]; subscribers_total: number; subscribers_est_total: number }>("user_list_in_area", {
-          lat,
-          lng,
+          lat: la,
+          lng: ln,
           radius_km: radius,
           limit: 40,
         }),
-        menara<{ apps: AppRow[]; busiest_hour: number | null }>("usage_top_apps_in_area", { lat, lng, radius_km: radius, limit: 5 }).catch(() => ({
+        menara<{ apps: AppRow[]; busiest_hour: number | null }>("usage_top_apps_in_area", { lat: la, lng: ln, radius_km: radius, limit: 5 }).catch(() => ({
           apps: [],
           busiest_hour: null,
         })),
       ]);
       clearMap();
+      await drawCircle(la, ln);
       await drawTowers(towersData.towers);
-      runKeplerCommand(store, MAP_ID, "set_view", { bounds: circleBounds(lat, lng, radius) });
+      runKeplerCommand(store, MAP_ID, "set_view", { bounds: circleBounds(la, ln, radius) });
       setArea({
         towers: towersData.towers,
         subscribers: subsData.subscribers ?? [],
@@ -171,13 +215,20 @@ export function AreaPanel() {
 
   const showTrail = async (hash: string) => {
     setError(null);
+    setRoutines(null);
     try {
-      const data = await menara<{ segments: Segment[] }>("user_get_trail", { msisdn_hash: hash, window_min: 1440 });
+      const [data, routineReply] = await Promise.all([
+        menara<{ segments: Segment[] }>("user_get_trail", { msisdn_hash: hash, window_min: 1440 }),
+        fetch("/api/menara/routines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ msisdn_hash: hash }),
+        }).then((res) => res.json() as Promise<{ routines?: Routine[]; error?: string }>),
+      ]);
       const segments = data.segments ?? [];
       setTrail({ hash, segments });
-      for (const id of ["trail_stops", "trail_lines"]) dropDataset(id);
-      const layers = (runKeplerCommand(store, MAP_ID, "get_map_state", {}) as { layers: { id: string; dataId: string }[] }).layers;
-      drawn(layers.filter((l) => l.dataId.startsWith("trail_")).map((l) => l.id));
+      setRoutines(routineReply.routines ?? []);
+      removeOurs(["trail_"]);
       if (!segments.length) return;
       await runKeplerCommand(store, MAP_ID, "load_data", {
         rows: segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })),
@@ -210,10 +261,56 @@ export function AreaPanel() {
           color: "#7c5cff",
         });
       }
+      // the places the 4-week routine found: home, weekday, weekend
+      for (const kind of ["home", "weekday", "weekend"] as const) {
+        const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
+        if (!rows.length) continue;
+        await runKeplerCommand(store, MAP_ID, "load_data", { rows, label: `Routine ${kind}`, dataId: `trail_${kind}`, centerMap: false, autoCreateLayers: false });
+        await runKeplerCommand(store, MAP_ID, "add_layer", {
+          dataId: `trail_${kind}`,
+          type: "point",
+          label: `Routine ${kind}`,
+          columns: { lat: "lat", lng: "lng" },
+          color: ROUTINE_STYLE[kind].color,
+          radius: 24,
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  // "Pick on map": the next click on the map sets the centre and shows the area (a drag to pan is ignored)
+  useEffect(() => {
+    if (!picking) return;
+    let down: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+    };
+    const onClick = (e: MouseEvent) => {
+      const map = (e.target as HTMLElement | null)?.closest(".maplibregl-map");
+      if (!map) return;
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      const rect = map.getBoundingClientRect();
+      const state = runKeplerCommand(store, MAP_ID, "get_map_state", {}) as {
+        view: { latitude: number; longitude: number; zoom: number; bearing: number };
+      };
+      const point = unproject(state.view, e.clientX - (rect.left + rect.width / 2), e.clientY - (rect.top + rect.height / 2));
+      const at = { lat: Number(point.lat.toFixed(4)), lng: Number(point.lng.toFixed(4)) };
+      setLat(at.lat);
+      setLng(at.lng);
+      setPicking(false);
+      void search(at);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("click", onClick, true);
+    };
+    // search reads the latest radius, so it is re-bound when that changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picking, store, radius]);
 
   const counts = area ? { UP: 0, DEGRADED: 0, DOWN: 0, ...Object.fromEntries(Object.entries(Object.groupBy(area.towers, (t) => t.status)).map(([k, v]) => [k, v?.length ?? 0])) } : null;
 
@@ -254,6 +351,16 @@ export function AreaPanel() {
           >
             <Crosshair className="size-4" />
           </Button>
+          <Button
+            variant={picking ? "default" : "outline"}
+            size="icon"
+            className="size-9 shrink-0"
+            title="Pick on map: click where you want the circle"
+            aria-pressed={picking}
+            onClick={() => setPicking((on) => !on)}
+          >
+            <MousePointerClick className="size-4" />
+          </Button>
         </div>
         <div className="flex gap-2 text-[13px]">
           <label className="flex flex-1 items-center gap-1.5 text-muted-foreground">
@@ -265,12 +372,13 @@ export function AreaPanel() {
             <input type="number" step="0.001" value={lng} onChange={(e) => setLng(Number(e.target.value))} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-foreground" />
           </label>
         </div>
+        {picking ? <p className="text-[12px] text-primary">Click anywhere on the map to put the circle there.</p> : null}
         <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
           Radius
           <input type="range" min={1} max={50} value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="flex-1 accent-primary" />
           <span className="w-12 text-right tabular-nums text-foreground">{radius} km</span>
         </label>
-        <Button onClick={search} disabled={busy} className="h-9 rounded-[10px]">
+        <Button onClick={() => search()} disabled={busy} className="h-9 rounded-[10px]">
           {busy ? <Loader2 className="animate-spin" /> : <Search />}
           Show area
         </Button>
@@ -342,6 +450,24 @@ export function AreaPanel() {
                   </li>
                 ))}
               </ol>
+            </section>
+          ) : null}
+
+          {routines ? (
+            <section>
+              <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Routine (last 4 weeks)</h3>
+              <ul className="flex flex-col gap-1.5 text-[12px] leading-5">
+                {routines.map((r) => (
+                  <li key={`${r.kind}-${r.tower}`} className="flex gap-2">
+                    <span className={cn("h-5 shrink-0 rounded px-1.5 text-[10px] font-semibold leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
+                    <span>{r.sentence}</span>
+                  </li>
+                ))}
+                {routines.length === 0 ? <li className="text-muted-foreground">No regular routine found in the last 4 weeks.</li> : null}
+              </ul>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Synthetic subscriber. Inferred from cell level data (accurate to about a kilometre), so places are &lsquo;near&rsquo;, never &lsquo;at&rsquo;.
+              </p>
             </section>
           ) : null}
 
