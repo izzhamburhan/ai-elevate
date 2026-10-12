@@ -122,7 +122,7 @@ function flyToTower(store: KeplerStore, mapId: string, tower: { lat: number; lng
 }
 
 /**
- * The down tower a layer click picked, if any: a dot in the "Towers down" layer, or a DOWN row
+ * The down tower a layer click picked, if any: a dot in the "Tower outages" layer, or a DOWN row
  * of any other point dataset (e.g. the area card's "Towers DOWN").
  */
 function clickedDownTower(instance: Instance, clicked: Clicked) {
@@ -158,7 +158,7 @@ function useFlyToClickedDownTower(store: KeplerStore, mapId: string, panelWidth:
   }, [store, mapId]);
 }
 
-/** The tower names in the map's "Towers down" dataset. */
+/** The tower names in the map's "Tower outages" dataset. */
 function datasetTowers(dataset: Dataset) {
   const column = dataset.fields.findIndex((f) => f.name === "tower");
   if (column < 0) return undefined;
@@ -166,7 +166,7 @@ function datasetTowers(dataset: Dataset) {
 }
 
 /**
- * Keeps the map's "Towers down" layer on the live list: a refresh that finds the network changed,
+ * Keeps the map's "Tower outages" layer on the live list: a refresh that finds the network changed,
  * or a saved chat restored with an old list, swaps the rows in place (the layer and its styling
  * stay). Once nothing is down the dataset goes. A map without the dataset is left alone.
  */
@@ -292,14 +292,14 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
   return (
     <>
       <div role="status" className="sr-only">
-        {newCount ? `${newCount} more ${newCount === 1 ? "tower" : "towers"} down: ${status.newlyDown.join(", ")}` : ""}
+        {newCount ? `${newCount} more ${newCount === 1 ? "outage" : "outages"}: ${status.newlyDown.join(", ")}` : ""}
       </div>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           {/* right-14 clears kepler's control column (32px buttons in 12px padding); top-3 lines up with them */}
           <button
             type="button"
-            aria-label={`${count} ${count === 1 ? "tower" : "towers"} down, ${status.degraded} degraded. Show network status`}
+            aria-label={`${count} ${count === 1 ? "outage" : "outages"}, ${status.degraded} degraded. Show network status`}
             className="absolute top-3 right-14 z-10 flex h-8 items-center gap-2 rounded-full border bg-background/95 px-3 text-[13px] whitespace-nowrap shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur transition-colors hover:bg-accent"
           >
             {pulsing ? <span aria-hidden="true" className="absolute -inset-px rounded-full ring-2 ring-red motion-safe:animate-pulse" /> : null}
@@ -307,12 +307,12 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
               <>
                 <Dot className="bg-red shadow-[0_0_6px_var(--red)]" />
                 <span className="font-semibold tabular-nums text-red">{count}</span>
-                <span className="text-muted-foreground">{count === 1 ? "tower down" : "towers down"}</span>
+                <span className="text-muted-foreground">{count === 1 ? "outage" : "outages"}</span>
               </>
             ) : (
               <>
                 <Dot className="bg-green" />
-                <span className="text-muted-foreground">No towers down</span>
+                <span className="text-muted-foreground">No outages</span>
               </>
             )}
             {newCount ? <span className="rounded bg-red/15 px-1 py-0.5 text-[10px] leading-none font-medium text-red">{newCount} new</span> : null}
@@ -350,15 +350,15 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            <StatTile value={count} label="Down" className="text-red" />
+            <StatTile value={count} label="Outage" className="text-red" />
             <StatTile value={status.degraded} label="Degraded" className="text-amber" />
-            <StatTile value={inView} label="Down in view" />
+            <StatTile value={inView} label="Outage in view" />
           </div>
 
           {count ? (
             <>
               <Button variant="outline" size="sm" onClick={showAll}>
-                Show all down towers
+                Show all outages
               </Button>
               <div className="-mx-1 flex max-h-72 flex-col gap-2 overflow-y-auto">
                 {byState(down).map(([state, towers]) => (

@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { pointInRing } from "@/lib/menara/geometry";
 import { viewFor } from "@/lib/menara/map-draw";
-import { TOWER_STATUS_COLOR } from "@/lib/map-colors";
+import { TOWER_STATUS_COLOR, towerStatusLabel } from "@/lib/map-colors";
 import { cn } from "@/lib/utils";
 
 import { MAP_ID, type makeKeplerStore } from "../kepler-store";
@@ -332,7 +332,7 @@ export function AreaCard({
       showTooltipFields("area_boundary", []);
       for (const status of want.has("towers") ? ["UP", "DEGRADED", "DOWN"] : []) {
         const rows = within.filter((t) => t.status === status).map((t) => ({ name: t.enodeb_name, lat: t.lat, lng: t.lng, status }));
-        await addPoints(`area_${status.toLowerCase()}`, `Towers ${status}`, rows, STATUS_COLOR[status], TOWER_RADIUS[status]);
+        await addPoints(`area_${status.toLowerCase()}`, `Towers ${towerStatusLabel(status)}`, rows, STATUS_COLOR[status], TOWER_RADIUS[status]);
       }
       runKeplerCommand(store, MAP_ID, "set_view", viewFor(resolved.bbox));
 
@@ -568,7 +568,7 @@ export function AreaCard({
           <>
             <Stat label="Towers" value={area.inside} />
             <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber" : undefined} />
-            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red" : undefined} />
+            <Stat label="Outage" value={counts("DOWN")} tone={counts("DOWN") ? "text-red" : undefined} />
           </>
         ) : null}
         {want.has("subscribers") ? <Stat label="People (est.)" value={area.peopleEst.toLocaleString()} /> : null}
@@ -583,7 +583,7 @@ export function AreaCard({
               <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[t.status] ?? TOWER_STATUS_COLOR.UNKNOWN }} />
               <span className="font-medium">{t.enodeb_name}</span>
               <span className="truncate text-muted-foreground">{t.town}</span>
-              <span className="ml-auto tabular-nums text-muted-foreground">{t.status}</span>
+              <span className="ml-auto tabular-nums text-muted-foreground">{towerStatusLabel(t.status)}</span>
             </li>
           ))}
           {area.towers.length === 0 ? <li className="px-1.5 text-muted-foreground">No towers found here.</li> : null}

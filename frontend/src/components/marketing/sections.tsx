@@ -141,7 +141,7 @@ const CONNECTORS: { name: string; desc: string; icon: LucideIcon }[] = [
 
 /** One step of the sample trace: real tool names from the Menara and NetOps servers. */
 const TRACE: { tool: string; args: string; result: string; warn?: boolean }[] = [
-  { tool: "tower_get_status", args: 'enodeb_name="TWR-KB-031"', result: "down · 3 alarms" },
+  { tool: "tower_get_status", args: 'enodeb_name="TWR-KB-031"', result: "outage · 3 alarms" },
   { tool: "flood_check_point", args: "…", result: "inside flood extent · gauge 4.2 m ▲" },
   { tool: "ontology_blast_radius", args: "…", result: "feeder F-12 · 1 hospital (synthetic) · 2,814 subscribers" },
   { tool: "twin_simulate_tilt", args: "…", result: "neighbour load 96% → 82%" },
