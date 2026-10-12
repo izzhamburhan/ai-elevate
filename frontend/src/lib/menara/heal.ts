@@ -39,7 +39,8 @@ export type RunEvent =
   | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
   // `action` and `targets` let the map draw what is proposed; `purpose` says what a neighbour tilt is for
   | { type: "approval"; approvalId: string; summary: string; action: string; targets: string[]; purpose?: TiltPurpose }
-  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
+  // `healthy`: the tower had nothing to heal (already UP, no alarms, neighbours with headroom), so nothing ran
+  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string; healthy?: boolean };
 
 type Run = {
   id: string;
@@ -57,14 +58,27 @@ export function currentRun(): Run | undefined {
   return holder.__elevateHealRun;
 }
 
-/** Starts healing `tower`, or the most urgent faulty tower when none is named. */
-export async function startHeal(tower?: string): Promise<{ runId: string; tower: string }> {
+/**
+ * Starts healing `tower`, or the most urgent faulty tower when none is named. Detection runs first, so a tower that
+ * is already healthy (healed by an earlier run, or past the scripted outage on the demo clock) ends at once with
+ * `healthy: true` and nothing is changed.
+ */
+export async function startHeal(tower?: string): Promise<{ runId: string; tower: string; healthy: boolean }> {
   if (holder.__elevateHealRun?.status === "running") throw new Error("A self-heal run is already in progress.");
   const target = tower?.trim().toUpperCase() || (await pickTarget());
+  const found = await detect(target);
+  // another start may have begun while this one was detecting
+  if (currentRun()?.status === "running") throw new Error("A self-heal run is already in progress.");
   const run: Run = { id: crypto.randomUUID().slice(0, 8), tower: target, status: "running", events: [], cancelled: false, pending: null };
   holder.__elevateHealRun = run;
-  void execute(run);
-  return { runId: run.id, tower: target };
+  run.events.push({ type: "stage", step: null, stage: "detect", attempt: 0, label: `${target} is ${String(found.status.status)}${found.alarms.length ? `: ${found.alarms[0].code}` : ""}` });
+  if (found.healthy) {
+    run.events.push({ type: "final", status: "done", text: await healthyText(target), healthy: true });
+    run.status = "done";
+    return { runId: run.id, tower: target, healthy: true };
+  }
+  void execute(run, found);
+  return { runId: run.id, tower: target, healthy: false };
 }
 
 export function decide(runId: string, approve: boolean): boolean {
@@ -108,6 +122,28 @@ class Stopped extends Error {}
 type Neighbour = { enodeb_name: string; status: string; prb_util: number | null };
 type Alarm = { code: string; message: string; raised_at?: string };
 type Diagnosis = { cause: string; confidence: number; skill: string | null; remote: "reset" | null; why: string; problem: string };
+type Detection = { status: Data; alarms: Alarm[]; neighbours: Neighbour[]; hot: Neighbour[]; healthy: boolean };
+
+/** The tower's status, active alarms and overloaded neighbours. Healthy = UP, no alarms, every neighbour under the line. */
+async function detect(T: string): Promise<Detection> {
+  const status = dataOf(await callMenaraTool("tower_get_status", { enodeb_name: T }));
+  const alarms = ((dataOf(await callMenaraTool("tower_get_alarms", { enodeb_name: T, active_only: true })).alarms as Alarm[] | undefined) ?? []);
+  const neighbours = ((status.neighbours as Neighbour[] | undefined) ?? []).filter((n) => n.enodeb_name !== T);
+  const hot = neighbours.filter((n) => n.status === "UP" && (n.prb_util ?? 0) >= THRESHOLD_PRB);
+  return { status, alarms, neighbours, hot, healthy: status.status === "UP" && !alarms.length && !hot.length };
+}
+
+/** Why there is nothing to heal, and how to replay the outage. */
+async function healthyText(T: string): Promise<string> {
+  const incidents = ((await safe("ontology_list_incidents", { enodeb_name: T })).incidents as
+    | { incident_id: string; status: string; created_at: string }[]
+    | undefined) ?? [];
+  const resolved = incidents.filter((i) => i.status === "RESOLVED").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const earlier = resolved
+    ? ` An earlier run already restored it (incident ${resolved.incident_id} is resolved).`
+    : " On the demo clock its outage is already over.";
+  return `${T} is already UP with no active alarms and its neighbours have headroom: nothing to heal, nothing was changed.${earlier} Reset the demo to replay the outage from the start.`;
+}
 
 /** What the evidence says is wrong, and who or what can fix it. */
 function diagnose(status: Data, alarms: Alarm[], power: Data, flood: Data): Diagnosis {
@@ -145,9 +181,9 @@ function diagnose(status: Data, alarms: Alarm[], power: Data, flood: Data): Diag
   return { cause: "UNKNOWN", confidence: 0.5, skill: "RAN", remote: null, why: alarms[0]?.message ?? `Tower is ${String(status.status)}`, problem: "fault" };
 }
 
-async function execute(run: Run) {
+async function execute(run: Run, found: Detection) {
   const T = run.tower;
-  let saidAt = 0;
+  let saidAt = Date.now(); // Detect was just shown by startHeal: hold it like any other stage
   /** `blocked` marks the stage the run stopped at (a rejection, a policy denial, no crew). */
   const say = (stage: Stage, label: string, attempt = 0, blocked = false) => {
     saidAt = Date.now();
@@ -368,18 +404,9 @@ async function execute(run: Run) {
   };
 
   try {
-    // ---- detect
-    const status = await call("tower_get_status", { enodeb_name: T });
-    const alarms = ((await call("tower_get_alarms", { enodeb_name: T, active_only: true })).alarms as Alarm[] | undefined) ?? [];
+    // ---- detect (done in startHeal, which only gets here when there is something to heal)
+    const { status, alarms, neighbours, hot } = found;
     faultSince = alarms.map((a) => a.raised_at).filter((at): at is string => !!at).sort()[0];
-    say("detect", `${T} is ${String(status.status)}${alarms.length ? `: ${alarms[0].code}` : ""}`);
-    const neighbours = ((status.neighbours as Neighbour[] | undefined) ?? []).filter((n) => n.enodeb_name !== T);
-    const hot = neighbours.filter((n) => n.status === "UP" && (n.prb_util ?? 0) >= THRESHOLD_PRB);
-    if (status.status === "UP" && !alarms.length && !hot.length) {
-      run.events.push({ type: "final", status: "done", text: `${T} is UP with no active alarms and its neighbours have headroom: nothing to heal.` });
-      run.status = "done";
-      return;
-    }
 
     // ---- diagnose
     const power = await call("grid_get_tower_power", { enodeb_name: T }).catch(() => ({}) as Data);
