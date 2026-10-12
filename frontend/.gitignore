@@ -42,3 +42,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# self-hosted vector basemap, downloaded by `npm run basemap`
+/public/basemap/

@@ -10,8 +10,10 @@ import { getTheme, useTheme } from "@/lib/theme";
 
 import { ChatFullscreenContext } from "./chat-fullscreen";
 import { ChatMapSync } from "./chat-map-sync";
+import { DownTowerCount } from "./down-tower-count";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
-import { BASEMAP_FOR_THEME, MAP_ID, makeKeplerStore } from "./kepler-store";
+import { basemapFor, useBasemapKind } from "./basemap-choice";
+import { MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { TowerPulse } from "./tower-pulse";
 import { useKeplerBridge } from "./use-kepler-bridge";
@@ -107,14 +109,15 @@ export default function KeplerMap() {
     ? fullWidth
     : Math.min(SIDE_PANEL_WIDTH, fullWidth - COLLAPSE_GUTTER);
 
-  // swap the basemap whenever the app theme flips
+  // swap the basemap whenever the app theme flips or the user picks the other basemap
+  const basemapKind = useBasemapKind();
   useEffect(() => {
-    const styleType = BASEMAP_FOR_THEME[theme];
+    const styleType = basemapFor(theme, basemapKind);
     const keplerGl = store.getState().keplerGl as Record<string, { mapStyle: { styleType: string } }>;
     if (keplerGl[MAP_ID]?.mapStyle.styleType !== styleType) {
       store.dispatch(wrapTo(MAP_ID, mapStyleChange(styleType)));
     }
-  }, [store, theme]);
+  }, [store, theme, basemapKind]);
 
   // opt-in pitch mode (NEXT_PUBLIC_WEATHER_DEMO_MODE=1): local Natural Earth outlines instead of remote tiles
   const demoLoaded = useRef(false);
@@ -147,6 +150,7 @@ export default function KeplerMap() {
                 getMapboxRef={announceStyleOnFirstIdle}
               />
               <TowerPulse store={store} mapId={MAP_ID} />
+              <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
             </ChatFullscreenContext.Provider>
           </ChatProvider>
         </Provider>

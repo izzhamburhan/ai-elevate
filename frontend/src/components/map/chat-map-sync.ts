@@ -9,7 +9,8 @@ import { loadMapSnapshot, saveMapSnapshot } from "@/components/chat/chat-history
 import { getTheme } from "@/lib/theme";
 
 import { DOWN_TOWERS_DATA_ID, downTowersAction } from "./down-towers";
-import { BASEMAP_FOR_THEME, PENINSULA_VIEW, type makeKeplerStore } from "./kepler-store";
+import { basemapFor, FOLLOWING_BASEMAPS } from "./basemap-choice";
+import { PENINSULA_VIEW, type makeKeplerStore } from "./kepler-store";
 
 type KeplerStore = ReturnType<typeof makeKeplerStore>;
 type KeplerAction = { type: (typeof ActionTypes)[keyof typeof ActionTypes] };
@@ -32,9 +33,6 @@ type KeplerInstance = {
 
 /** Panning fires many updates; save once the map has been still for this long. */
 const SAVE_DELAY_MS = 1000;
-
-/** Basemaps that follow the app theme; CARTO's are the ones chats were saved with before the OSM basemaps. */
-const THEME_BASEMAPS: readonly string[] = [...Object.values(BASEMAP_FOR_THEME), "positron", "dark-matter"];
 
 /** Changes to any of these mean the chat's map changed (hover/selection state is left out). */
 const signature = ({ visState: v, mapState, mapStyle }: KeplerInstance) => [
@@ -134,7 +132,7 @@ function createChatMapSync(store: KeplerStore, mapId: string) {
 
     dispatch(resetMapConfig());
     if (!snapshot) {
-      dispatch(mapStyleChange(BASEMAP_FOR_THEME[getTheme()]));
+      dispatch(mapStyleChange(basemapFor(getTheme())));
       if (await addStartingData(dispatch, isCurrent)) {
         await waitFor(store, () => Boolean(read()?.visState.datasets[DOWN_TOWERS_DATA_ID]));
       }
@@ -145,10 +143,10 @@ function createChatMapSync(store: KeplerStore, mapId: string) {
     dispatch(
       addDataToMap({ datasets: datasets ?? [], config: config ?? undefined, options: { centerMap: false, keepExistingConfig: false } }),
     );
-    // the light/dark basemaps follow the app theme rather than the theme the map was saved in
-    const themed = BASEMAP_FOR_THEME[getTheme()];
+    // the light/dark basemaps follow the app theme and basemap pick, not those the map was saved with
+    const themed = basemapFor(getTheme());
     const styleType = read()?.mapStyle.styleType;
-    if (styleType && styleType !== themed && THEME_BASEMAPS.includes(styleType)) dispatch(mapStyleChange(themed));
+    if (styleType && styleType !== themed && FOLLOWING_BASEMAPS.includes(styleType)) dispatch(mapStyleChange(themed));
     const ids = (datasets ?? []).map((d) => d.info.id).filter((id): id is string => Boolean(id));
     await waitFor(store, () => ids.every((id) => read()?.visState.datasets[id]));
   }
