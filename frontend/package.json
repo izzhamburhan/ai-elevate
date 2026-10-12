@@ -11,6 +11,7 @@
     "gaps": "node scripts/capability-gaps.mjs",
     "test:weather": "node --experimental-strip-types --test tests/weather-*.test.mjs",
     "test:hermes": "node --experimental-strip-types --test tests/hermes-*.test.mjs",
+    "test:map": "node --experimental-strip-types --test tests/map-*.test.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {

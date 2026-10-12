@@ -20,3 +20,15 @@ export function hexToRgb(hex: string): [number, number, number] {
   const n = Number.parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+
+/** Agent investigation findings with no status of their own (matches the Hermes evidence layer). */
+export const FINDING_COLOR = "#8b5cf6";
+
+/** Map colour of an investigation site's tone: status hues as the tower layers draw them. */
+export const SITE_TONE_COLOR = {
+  red: TOWER_STATUS_COLOR.DOWN,
+  amber: TOWER_STATUS_COLOR.DEGRADED,
+  green: TOWER_STATUS_COLOR.UP,
+  blue: "#6aa6ff",
+  neutral: FINDING_COLOR,
+} as const;

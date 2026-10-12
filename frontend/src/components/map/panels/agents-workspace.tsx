@@ -44,7 +44,9 @@ export function Kind({ kind }: { kind: "synthetic" | "predicted" | "graph" | "va
 // ---------------------------------------------------------------- agents
 
 export function AgentRoster({ agents, checking, active }: { agents: HermesAgents | null; checking: boolean; active: HermesJob | null }) {
-  const busy = new Map((active?.tasks ?? []).filter((t) => t.status === "running" || t.status === "queued").map((t) => [t.agent_id, t.active_tool ?? "thinking"]));
+  // an agent can hold a running task and a queued one; the running one (with its tool) must win, so it goes last
+  const busy = new Map((active?.tasks ?? []).filter((t) => t.status === "running" || t.status === "queued")
+    .sort((a, b) => Number(a.status === "running") - Number(b.status === "running")).map((t) => [t.agent_id, t.active_tool ?? "thinking"]));
   return (
     <div className="space-y-1.5" aria-label="Hermes agents">
       {(Object.keys(AGENT_META) as HermesAgentId[]).map((id) => {
