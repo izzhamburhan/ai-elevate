@@ -263,6 +263,6 @@ export const KeplerGl = injectComponents([
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
   [MapControlFactory, ElevateMapControlFactory],
   [FeatureActionPanelFactory, ElevateFeatureActionPanelFactory],
-  // the tower tooltip's actions (Heal this tower, Add to chat); hides tooltips with nothing to show
+  // the tower tooltip's actions (Start self-heal, Add to chat); hides tooltips with nothing to show
   ...towerPopoverFactories,
 ] as never);

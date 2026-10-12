@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from menara_core import settings
 from menara_core.db import connect
 from menara_core.envelope import Envelope
 from menara_core.mcp_server import add_tool_search, serve
+from menara_core.seed.schema import upgrade
 
 from ticket_mcp import tools
 
@@ -20,7 +23,8 @@ DEFAULT_PORT = 8102
 INSTRUCTIONS = (
     "UniFi Mobile support tickets for Malaysia. ALL DATA IS SYNTHETIC. "
     "Tickets appear only once the scenario clock reaches their creation time. "
-    "customer_ref is a hashed MSISDN: pass it to the user MCP. Only ticket_add_note and ticket_resolve write (notes and resolutions only)."
+    "customer_ref is a hashed MSISDN: pass it to the user MCP. Network Trouble Tickets (NTTs) group the customer tickets "
+    "of one network fault; resolving an NTT resolves its linked tickets. The tools that write only add notes, resolutions and NTTs."
 )
 
 
@@ -49,6 +53,16 @@ def build_server(db_path: Path, *, search: bool = False) -> FastMCP:
     ) -> dict[str, Any]:
         return run(lambda conn: tools.cluster_by_location(conn, ticket_id, radius_km, window_min, limit))
 
+    @mcp.tool(
+        description="Open tickets (not resolved, already raised) within radius_km of a tower (default 3 km, about its "
+        "coverage area), optionally only those raised at or after `since` (ISO time, e.g. when the fault began): the "
+        "customers an outage there reaches. Use it to find the tickets to link to an NTT."
+    )
+    def ticket_list_open_near_tower(
+        enodeb_name: str, radius_km: float = tools.NEAR_TOWER_KM, since: str | None = None, limit: int = 200
+    ) -> dict[str, Any]:
+        return run(lambda conn: tools.open_near_tower(conn, enodeb_name, radius_km, since, limit))
+
     @mcp.tool(description="Append a note (max 1000 chars) to a ticket.")
     def ticket_add_note(ticket_id: str, text: str, author: str = "agent") -> dict[str, Any]:
         return run(lambda conn: tools.add_note(conn, ticket_id, text, author))
@@ -62,7 +76,8 @@ def build_server(db_path: Path, *, search: bool = False) -> FastMCP:
 
     @mcp.tool(
         description="Create a Network Trouble Ticket (NTT) bound to a Network Element (tower or feeder). "
-        "Auto-deduplicates: if active NTT exists for the NE, reuses it and links any new CTTs."
+        "Auto-deduplicates: if active NTT exists for the NE, reuses it and links any new CTTs. Pass fault_began_at "
+        "(ISO time, e.g. the first alarm) when the fault started before the NTT: the MCMC outage time counts from it."
     )
     def ticket_create_ntt(
         network_element_id: str,
@@ -70,10 +85,11 @@ def build_server(db_path: Path, *, search: bool = False) -> FastMCP:
         severity: str,
         summary: str,
         ctt_ticket_ids: list[str] | None = None,
+        fault_began_at: str | None = None,
     ) -> dict[str, Any]:
         return run(
             lambda conn: tools.create_ntt(
-                conn, network_element_id, fault_type, severity, summary, ctt_ticket_ids
+                conn, network_element_id, fault_type, severity, summary, ctt_ticket_ids, fault_began_at
             )
         )
 
@@ -122,7 +138,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--search", action="store_true", help="collapse the tool list into BM25 search + call tools")
     parser.add_argument("--db", type=Path, default=None)
     args = parser.parse_args(argv)
-    serve(build_server(args.db or settings.db_path(), search=args.search), args.transport, args.host, args.port)
+    db = args.db or settings.db_path()
+    if db.exists():
+        # this server owns the ntt tables: bring an older menara.db up to the current columns before serving
+        with closing(sqlite3.connect(db)) as conn:
+            upgrade(conn)
+    serve(build_server(db, search=args.search), args.transport, args.host, args.port)
 
 
 if __name__ == "__main__":
