@@ -1,0 +1,53 @@
+city,country,region,lat,lng,population
+Tokyo,Japan,Asia,35.6762,139.6503,37400000
+Delhi,India,Asia,28.6139,77.2090,32900000
+Shanghai,China,Asia,31.2304,121.4737,28500000
+Dhaka,Bangladesh,Asia,23.8103,90.4125,23200000
+São Paulo,Brazil,South America,-23.5505,-46.6333,22600000
+Mexico City,Mexico,North America,19.4326,-99.1332,22300000
+Cairo,Egypt,Africa,30.0444,31.2357,22100000
+Beijing,China,Asia,39.9042,116.4074,21800000
+Mumbai,India,Asia,19.0760,72.8777,21300000
+Osaka,Japan,Asia,34.6937,135.5023,19000000
+New York,United States,North America,40.7128,-74.0060,18900000
+Chongqing,China,Asia,29.5630,106.5516,17300000
+Karachi,Pakistan,Asia,24.8607,67.0011,17200000
+Kinshasa,DR Congo,Africa,-4.4419,15.2663,16300000
+Lagos,Nigeria,Africa,6.5244,3.3792,15900000
+Istanbul,Turkey,Europe,41.0082,28.9784,15800000
+Buenos Aires,Argentina,South America,-34.6037,-58.3816,15500000
+Kolkata,India,Asia,22.5726,88.3639,15300000
+Manila,Philippines,Asia,14.5995,120.9842,14700000
+Guangzhou,China,Asia,23.1291,113.2644,14300000
+Tianjin,China,Asia,39.3434,117.3616,14000000
+Lahore,Pakistan,Asia,31.5204,74.3587,13900000
+Rio de Janeiro,Brazil,South America,-22.9068,-43.1729,13700000
+Bangalore,India,Asia,12.9716,77.5946,13600000
+Shenzhen,China,Asia,22.5431,114.0579,13100000
+Moscow,Russia,Europe,55.7558,37.6173,12700000
+Los Angeles,United States,North America,34.0522,-118.2437,12500000
+Chennai,India,Asia,13.0827,80.2707,11800000
+Bogotá,Colombia,South America,4.7110,-74.0721,11500000
+Paris,France,Europe,48.8566,2.3522,11200000
+Jakarta,Indonesia,Asia,-6.2088,106.8456,11200000
+Lima,Peru,South America,-12.0464,-77.0428,11000000
+Bangkok,Thailand,Asia,13.7563,100.5018,11000000
+Seoul,South Korea,Asia,37.5665,126.9780,10000000
+London,United Kingdom,Europe,51.5074,-0.1278,9600000
+Tehran,Iran,Asia,35.6892,51.3890,9500000
+Ho Chi Minh City,Vietnam,Asia,10.8231,106.6297,9300000
+Luanda,Angola,Africa,-8.8390,13.2894,9000000
+Chicago,United States,North America,41.8781,-87.6298,8900000
+Kuala Lumpur,Malaysia,Asia,3.1390,101.6869,8600000
+Riyadh,Saudi Arabia,Asia,24.7136,46.6753,7700000
+Hong Kong,China,Asia,22.3193,114.1694,7600000
+Madrid,Spain,Europe,40.4168,-3.7038,6700000
+Toronto,Canada,North America,43.6532,-79.3832,6400000
+Johannesburg,South Africa,Africa,-26.2041,28.0473,6200000
+Singapore,Singapore,Asia,1.3521,103.8198,5900000
+Nairobi,Kenya,Africa,-1.2921,36.8219,5300000
+Sydney,Australia,Oceania,-33.8688,151.2093,5300000
+Melbourne,Australia,Oceania,-37.8136,144.9631,5200000
+Berlin,Germany,Europe,52.5200,13.4050,3600000
+Dubai,United Arab Emirates,Asia,25.2048,55.2708,3600000
+Auckland,New Zealand,Oceania,-36.8485,174.7633,1700000

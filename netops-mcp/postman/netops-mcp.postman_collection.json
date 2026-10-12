@@ -1,0 +1,131 @@
+{
+  "info": {
+    "name": "NetOps MCP (local)",
+    "description": "JSON-RPC calls to the NetOps FastMCP server (streamable HTTP).\n\nRun '1. Initialize' first: it stores the Mcp-Session-Id header in a collection variable used by every other request. Then run '2. Initialized notification' once. Responses are Server-Sent Events: the JSON is on the 'data:' line.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000/mcp" },
+    { "key": "sessionId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Initialize",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const sid = pm.response.headers.get('mcp-session-id');",
+              "if (sid) { pm.collectionVariables.set('sessionId', sid); }",
+              "pm.test('session id received', () => pm.expect(sid).to.be.a('string'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2025-06-18\",\n    \"capabilities\": {},\n    \"clientInfo\": { \"name\": \"postman\", \"version\": \"1.0\" }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Initialized notification",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": { "mode": "raw", "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"notifications/initialized\"\n}" }
+      }
+    },
+    {
+      "name": "3. List tools",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": { "mode": "raw", "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 2,\n  \"method\": \"tools/list\"\n}" }
+      }
+    },
+    {
+      "name": "4. get_ntt_tickets (open 4G)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 3,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_ntt_tickets\",\n    \"arguments\": { \"technology\": \"4g\", \"status\": \"open\", \"page_size\": 5 }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "5. get_sites (5G, Central)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 4,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_sites\",\n    \"arguments\": { \"technology\": \"5g\", \"region\": \"Central\", \"page_size\": 10 }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "6. get_visited_sites (default IMSI)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 5,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_visited_sites\",\n    \"arguments\": { \"imsi\": \"502153000002017\", \"page_size\": 10 }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "7. get_bin_kpi_values (RSRP around KLCC)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json, text/event-stream" },
+          { "key": "Mcp-Session-Id", "value": "{{sessionId}}" }
+        ],
+        "url": "{{baseUrl}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 6,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_bin_kpi_values\",\n    \"arguments\": { \"kpi\": \"rsrp\", \"center\": \"3.1579,101.7123\", \"radius\": 1 }\n  }\n}"
+        }
+      }
+    }
+  ]
+}

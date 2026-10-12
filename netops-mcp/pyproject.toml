@@ -1,0 +1,23 @@
+[project]
+name = "netops-mcp"
+version = "0.1.0"
+description = "FastMCP server exposing network-operations tools over a synthetic DuckDB dataset"
+readme = "README.md"
+authors = [
+    { name = "Muhammad Azri Hasin", email = "muhammadazri.hasin@tmrnd.com.my" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.6",
+    "fastmcp>=4.1.0",
+]
+
+[project.scripts]
+netops-mcp = "netops_mcp.server:main"
+netops-mcp-seed = "netops_mcp.seed:main"
+netops-mcp-places = "netops_mcp.seed.places:main"
+netops-mcp-boundaries = "netops_mcp.seed.boundaries:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
