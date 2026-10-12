@@ -258,6 +258,17 @@
   background-color: transparent;
 }
 
+/* kepler eases the panel's width over 250ms; while its edge is dragged (panel-resize-handle.tsx)
+   the panel follows the pointer instead, and text isn't selected along the way. */
+body[data-panel-resizing] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body[data-panel-resizing] .side-panel--container {
+  transition: none;
+}
+
 /* Let the chat run to the panel's bottom edge, so the fade under its composer meets the edge
    instead of leaving a strip of kepler's padding below it. */
 .side-panel__content:has(.aui-thread-root) {
