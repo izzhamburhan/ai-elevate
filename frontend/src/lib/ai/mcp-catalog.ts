@@ -86,3 +86,10 @@ export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
 export function findBuiltinConnector(id: string): BuiltinConnector | undefined {
   return BUILTIN_CONNECTORS.find((c) => c.id === id);
 }
+
+/** The built-in connector served at `url` (absolute, as the chat route connects to it). */
+export function findBuiltinConnectorByUrl(url: string): BuiltinConnector | undefined {
+  const trim = (u: string) => u.replace(/\/+$/, "");
+  // app-relative built-ins (the kepler MCP) arrive with the page origin in front
+  return BUILTIN_CONNECTORS.find((c) => trim(url) === trim(c.url) || trim(url).endsWith(trim(c.url)));
+}

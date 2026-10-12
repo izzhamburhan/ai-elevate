@@ -106,9 +106,96 @@ function circleRing(lat: number, lng: number, km: number): number[][] {
   });
 }
 
-/** Rings as line segments (lat0/lng0 to lat1/lng1): kepler's `line` layer needs no extra config. */
-function segmentsOf(rings: number[][][]) {
-  return rings.flatMap((ring) => ring.slice(1).map((p, i) => ({ lat0: ring[i][1], lng0: ring[i][0], lat1: p[1], lng1: p[0] })));
+/**
+ * Converts polygon rings into adaptive dashed line segments.
+ * Dashed lines provide clear administrative boundary delineation without the harsh "fence"
+ * appearance of a solid line, and without conflicting with circular tower/subscriber point markers.
+ */
+function dashedSegmentsOf(
+  rings: number[][][],
+  radiusKm = 5,
+  style: "dashed" | "dotted" | "solid" = "dashed",
+) {
+  if (style === "solid") {
+    return rings.flatMap((ring) =>
+      ring.slice(1).map((p, i) => ({ lat0: ring[i][1], lng0: ring[i][0], lat1: p[1], lng1: p[0] })),
+    );
+  }
+
+  // Adaptive cycle based on area scale (e.g. ~160m cycle for Cyberjaya ~5km radius)
+  const isDotted = style === "dotted";
+  const cycleKm = Math.max(0.04, Math.min(2.0, (radiusKm || 5) * 0.035));
+  const dashKm = isDotted ? Math.min(0.015, cycleKm * 0.15) : cycleKm * 0.65;
+  const segments: { lat0: number; lng0: number; lat1: number; lng1: number }[] = [];
+
+  for (const ring of rings) {
+    if (!ring || ring.length < 2) continue;
+
+    // Cumulative geodesic distance along vertices
+    const cumDists = [0];
+    for (let i = 0; i < ring.length - 1; i++) {
+      const lat0 = ring[i][1];
+      const lng0 = ring[i][0];
+      const lat1 = ring[i + 1][1];
+      const lng1 = ring[i + 1][0];
+
+      const dLat = (lat1 - lat0) * 111.0;
+      const avgLatRad = ((lat0 + lat1) / 2) * (Math.PI / 180);
+      const dLng = (lng1 - lng0) * 111.0 * Math.cos(avgLatRad);
+      const segDist = Math.hypot(dLat, dLng);
+      cumDists.push(cumDists[cumDists.length - 1] + segDist);
+    }
+
+    const totalDist = cumDists[cumDists.length - 1];
+    if (totalDist <= 0.0001) continue;
+
+    const pointAt = (d: number, startIdx = 0) => {
+      let idx = startIdx;
+      while (idx < cumDists.length - 1 && cumDists[idx + 1] < d) {
+        idx++;
+      }
+      if (idx >= ring.length - 1) return { lat: ring[ring.length - 1][1], lng: ring[ring.length - 1][0], idx };
+      const d0 = cumDists[idx];
+      const d1 = cumDists[idx + 1];
+      const span = d1 - d0;
+      const frac = span > 0.000001 ? Math.max(0, Math.min(1, (d - d0) / span)) : 0;
+      return {
+        lat: ring[idx][1] + (ring[idx + 1][1] - ring[idx][1]) * frac,
+        lng: ring[idx][0] + (ring[idx + 1][0] - ring[idx][0]) * frac,
+        idx,
+      };
+    };
+
+    let cycleStart = 0;
+    let searchIdx = 0;
+
+    while (cycleStart < totalDist) {
+      const dashStart = cycleStart;
+      const dashEnd = Math.min(totalDist, dashStart + dashKm);
+
+      const pStart = pointAt(dashStart, searchIdx);
+      searchIdx = pStart.idx;
+      const pEnd = pointAt(dashEnd, searchIdx);
+
+      if (pStart.idx === pEnd.idx) {
+        segments.push({ lat0: pStart.lat, lng0: pStart.lng, lat1: pEnd.lat, lng1: pEnd.lng });
+      } else {
+        let curLat = pStart.lat;
+        let curLng = pStart.lng;
+        for (let v = pStart.idx + 1; v <= pEnd.idx; v++) {
+          segments.push({ lat0: curLat, lng0: curLng, lat1: ring[v][1], lng1: ring[v][0] });
+          curLat = ring[v][1];
+          curLng = ring[v][0];
+        }
+        segments.push({ lat0: curLat, lng0: curLng, lat1: pEnd.lat, lng1: pEnd.lng });
+      }
+
+      searchIdx = pEnd.idx;
+      cycleStart += cycleKm;
+    }
+  }
+
+  return segments;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
@@ -192,6 +279,15 @@ export function AreaCard({
     await runKeplerCommand(store, MAP_ID, "add_layer", { dataId, type: "point", label, columns: { lat: "lat", lng: "lng" }, color, radius });
   };
 
+  /** Which fields kepler's hover tooltip lists for a dataset. Empty array hides tooltip fields. */
+  const showTooltipFields = (dataId: string, names: string[]) => {
+    const tooltip = (store.getState().keplerGl as unknown as Record<string, { visState: { interactionConfig: { tooltip: TooltipConfig } } }>)[MAP_ID]
+      ?.visState.interactionConfig.tooltip;
+    if (!tooltip) return;
+    const fieldsToShow = { ...tooltip.config.fieldsToShow, [dataId]: names.map((name) => ({ name, format: null })) };
+    store.dispatch(wrapTo(MAP_ID, interactionConfigChange({ ...tooltip, config: { ...tooltip.config, fieldsToShow } } as never)));
+  };
+
   const loadApps = async (p: Place, by: "users" | "data") => {
     const data = await menara<Apps>("usage_top_apps_in_area", { lat: p.center.lat, lng: p.center.lng, radius_km: p.radius_km, rank_by: by, limit: 5 }).catch(() => null);
     setApps(data);
@@ -232,7 +328,8 @@ export function AreaCard({
 
       removeOurs(["area_", "trail_"]);
       const outline = resolved.rings.length ? resolved.rings : [circleRing(resolved.center.lat, resolved.center.lng, resolved.radius_km)];
-      await addLines("area_boundary", `${resolved.name} outline`, segmentsOf(outline), OUTLINE_COLOR, 3);
+      await addLines("area_boundary", `${resolved.name} outline`, dashedSegmentsOf(outline, resolved.radius_km), OUTLINE_COLOR, 2.5);
+      showTooltipFields("area_boundary", []);
       for (const status of want.has("towers") ? ["UP", "DEGRADED", "DOWN"] : []) {
         const rows = within.filter((t) => t.status === status).map((t) => ({ name: t.enodeb_name, lat: t.lat, lng: t.lng, status }));
         await addPoints(`area_${status.toLowerCase()}`, `Towers ${status}`, rows, STATUS_COLOR[status], TOWER_RADIUS[status]);
@@ -426,14 +523,6 @@ export function AreaCard({
     runKeplerCommand(store, MAP_ID, "update_layer", { layerId: id, radius: STOP_RADIUS });
   };
 
-  /** Which fields kepler's hover tooltip lists for a dataset. */
-  const showTooltipFields = (dataId: string, names: string[]) => {
-    const tooltip = (store.getState().keplerGl as unknown as Record<string, { visState: { interactionConfig: { tooltip: TooltipConfig } } }>)[MAP_ID]
-      ?.visState.interactionConfig.tooltip;
-    if (!tooltip) return;
-    const fieldsToShow = { ...tooltip.config.fieldsToShow, [dataId]: names.map((name) => ({ name, format: null })) };
-    store.dispatch(wrapTo(MAP_ID, interactionConfigChange({ ...tooltip, config: { ...tooltip.config, fieldsToShow } } as never)));
-  };
 
   const togglePlayback = () => {
     const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID]?.visState.filters ?? [];

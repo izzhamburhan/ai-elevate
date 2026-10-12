@@ -119,14 +119,22 @@ function ElevateMapPopoverContentFactory(...deps: Parameters<typeof MapPopoverCo
 }
 ElevateMapPopoverContentFactory.deps = MapPopoverContentFactory.deps;
 
-/** kepler's popover, handing whether it is pinned down to the content. */
+/**
+ * kepler's popover, handing whether it is pinned down to the content. No popover for decorative
+ * boundary outlines or layers with no tooltip fields: it would be an empty box.
+ */
 function ElevateMapPopoverFactory(...deps: Parameters<typeof MapPopoverFactory>) {
   const MapPopover = MapPopoverFactory(...deps);
-  const ElevateMapPopover = (props: React.ComponentProps<typeof MapPopover>) => (
-    <PopoverContext.Provider value={{ frozen: Boolean(props.frozen), onClose: props.onClose }}>
-      <MapPopover {...props} />
-    </PopoverContext.Provider>
-  );
+  const ElevateMapPopover = (props: React.ComponentProps<typeof MapPopover>) => {
+    const dataId = props.layerHoverProp?.layer?.config?.dataId;
+    const fields = props.layerHoverProp?.fieldsToShow;
+    if (dataId?.startsWith("area_boundary") || (Array.isArray(fields) && fields.length === 0)) return null;
+    return (
+      <PopoverContext.Provider value={{ frozen: Boolean(props.frozen), onClose: props.onClose }}>
+        <MapPopover {...props} />
+      </PopoverContext.Provider>
+    );
+  };
   return ElevateMapPopover;
 }
 ElevateMapPopoverFactory.deps = MapPopoverFactory.deps;

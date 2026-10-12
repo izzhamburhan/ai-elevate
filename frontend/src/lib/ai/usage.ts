@@ -27,6 +27,11 @@ export type ChatMessageMetadata = {
    * reserves that metadata key for its own per-step array.
    */
   stepCount?: number;
+  /**
+   * Tools the agent had for this turn (browser tools plus the MCP servers that connected), so
+   * follow-up suggestions only offer what the next turn can answer.
+   */
+  toolNames?: string[];
 };
 
 export function toTurnUsage(usage: LanguageModelUsage): TurnUsage {
