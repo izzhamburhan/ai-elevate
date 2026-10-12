@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AssistantRuntimeProvider, AuiConfig, Tools, useRemoteThreadListRuntime } from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/ai-sdk";
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
@@ -45,6 +45,19 @@ function useChatThreadRuntime() {
 }
 
 /**
+ * Prompt and model handed over from the landing page as `/workspace?q=…&model=deepseek|openai|local`.
+ * Read once on mount; this component only renders in the browser (kepler is loaded with ssr: false).
+ */
+function readLandingParams() {
+  const params = new URLSearchParams(window.location.search);
+  const provider = params.get("model");
+  return {
+    prompt: params.get("q")?.trim() || null,
+    modelId: CHAT_MODELS.find((m) => m.provider === provider)?.id ?? null,
+  };
+}
+
+/**
  * Holds the chats (saved in this browser, see `chat-history.tsx`) and the selected model above
  * kepler.gl so both survive switching side-panel tabs (kepler unmounts the inactive panel component).
  */
@@ -53,8 +66,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     runtimeHook: useChatThreadRuntime,
     adapter: chatThreadListAdapter,
   });
-  const [modelId, setModelId] = useState(DEFAULT_CHAT_MODEL_ID);
+  const [landing] = useState(readLandingParams);
+  const [modelId, setModelId] = useState(landing.modelId ?? DEFAULT_CHAT_MODEL_ID);
   const model = useMemo(() => ({ modelId, setModelId }), [modelId]);
+
+  // Put the landing page's prompt in the composer (not sent), then drop it from the URL.
+  useEffect(() => {
+    if (!landing.prompt) return;
+    runtime.thread.composer.setText(landing.prompt);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [runtime, landing.prompt]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime} config={toolsConfig}>
