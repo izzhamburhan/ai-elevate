@@ -20,6 +20,8 @@ import { runKeplerCommand } from "@/lib/kepler/commands";
 import { pointInRing } from "@/lib/menara/geometry";
 import { viewFor } from "@/lib/menara/map-draw";
 import { TOWER_STATUS_COLOR, towerStatusLabel } from "@/lib/map-colors";
+import { AREA_HALO_DATA, haloRows } from "@/lib/subscribers/halos";
+import { loadPeopleHalos } from "@/lib/subscribers/map-overlay";
 import { cn } from "@/lib/utils";
 
 import { MAP_ID, type makeKeplerStore } from "../kepler-store";
@@ -41,6 +43,8 @@ type Tower = { enodeb_name: string; town: string; lat: number; lng: number; stat
 type TowerLoad = { enodeb_name: string; subscribers_est: number };
 type Subscriber = { msisdn_hash: string; enodeb_name: string; latest_label: string; cell_changes_24h: number };
 type Segment = { serving_cell: string; enodeb_name: string; cell_lat: number; cell_lng: number; arrived_at: string; left_at: string | null; duration_min: number };
+/** A trail segment as the window sees it: a stay that began before the window starts at the window's start. */
+type Stay = Segment & { from: string; clipped: boolean };
 type Routine = { tower: string; kind: "home" | "weekday" | "weekend"; lat: number; lng: number; sentence: string };
 type AppRow = { name: string; category: string; reach_pct: number; data_share_pct: number };
 type Apps = { apps: AppRow[]; busiest_hour: number | null };
@@ -54,7 +58,7 @@ const TOWER_RADIUS = { UP: 30, DEGRADED: 45, DOWN: 45 } as Record<string, number
 const STOP_RADIUS = 35;
 const ROUTINE_RADIUS = 55;
 const PER_TOWER_SAMPLE = 6;
-const MAX_TOWERS_SAMPLED = 25;
+const MAX_TOWERS_SAMPLED = 40;
 
 const TRAIL_EVENT = "menara:trail-open";
 const TRAIL_DATA = "trail_moves";
@@ -66,6 +70,16 @@ const LABEL_SLOTS = 3; // the 1st, 2nd and 3rd visit to the same cell are labell
 /** An ISO time with the Malaysia offset, e.g. "2026-11-13T08:43:00+08:00". */
 function isoMyt(ms: number) {
   return `${new Date(ms + 8 * 3600_000).toISOString().slice(0, 19)}+08:00`;
+}
+
+/** Each segment from where it enters the window: the first one may have begun the day before. */
+function staysInWindow(segments: Segment[], windowStart: string | undefined): Stay[] {
+  const start = windowStart ? Date.parse(windowStart) : Number.NaN;
+  return segments.map((s) => {
+    const arrived = Date.parse(s.arrived_at);
+    const clipped = Number.isFinite(start) && arrived < start;
+    return { ...s, from: clipped ? isoMyt(start) : s.arrived_at, clipped };
+  });
 }
 
 
@@ -234,7 +248,7 @@ export function AreaCard({
   const [apps, setApps] = useState<Apps | null>(null);
   const [rank, setRank] = useState<"users" | "data">("users");
   const [error, setError] = useState<string | null>(null);
-  const [trail, setTrail] = useState<{ hash: string; segments: Segment[] } | null>(null);
+  const [trail, setTrail] = useState<{ hash: string; segments: Stay[] } | null>(null);
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [trailBusy, setTrailBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -316,6 +330,7 @@ export function AreaCard({
       // people are sampled per tower inside the area, so a large area does not fill the sample from outside it
       let subscribers: Subscriber[] = [];
       let peopleEst = 0;
+      let loads: TowerLoad[] = [];
       if (want.has("subscribers")) {
         const perTower = await Promise.all(
           within.slice(0, MAX_TOWERS_SAMPLED).map((t) =>
@@ -323,6 +338,7 @@ export function AreaCard({
           ),
         );
         subscribers = perTower.flatMap((r) => r?.subscribers ?? []);
+        loads = perTower.flatMap((r) => r?.towers ?? []);
         peopleEst = perTower.reduce((sum, r) => sum + (r?.towers?.[0]?.subscribers_est ?? 0), 0);
       }
 
@@ -330,6 +346,8 @@ export function AreaCard({
       const outline = resolved.rings.length ? resolved.rings : [circleRing(resolved.center.lat, resolved.center.lng, resolved.radius_km)];
       await addLines("area_boundary", `${resolved.name} outline`, dashedSegmentsOf(outline, resolved.radius_km), OUTLINE_COLOR, 2.5);
       showTooltipFields("area_boundary", []);
+      // people per tower: soft halos behind the tower dots (drawn by the PeopleHalos overlay from this dataset)
+      if (want.has("subscribers")) await loadPeopleHalos(store, AREA_HALO_DATA, haloRows(within, loads));
       for (const status of want.has("towers") ? ["UP", "DEGRADED", "DOWN"] : []) {
         const rows = within.filter((t) => t.status === status).map((t) => ({ name: t.enodeb_name, lat: t.lat, lng: t.lng, status }));
         await addPoints(`area_${status.toLowerCase()}`, `Towers ${towerStatusLabel(status)}`, rows, STATUS_COLOR[status], TOWER_RADIUS[status]);
@@ -367,14 +385,14 @@ export function AreaCard({
     window.dispatchEvent(new CustomEvent(TRAIL_EVENT, { detail: cardId }));
     try {
       const [data, routineReply] = await Promise.all([
-        menara<{ segments: Segment[] }>("user_get_trail", { msisdn_hash: hash, window_min: 1440 }),
+        menara<{ segments: Segment[]; window_start?: string }>("user_get_trail", { msisdn_hash: hash, window_min: 1440 }),
         fetch("/api/menara/routines", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ msisdn_hash: hash }),
         }).then((res) => res.json() as Promise<{ routines?: Routine[]; error?: string }>),
       ]);
-      const segments = data.segments ?? [];
+      const segments = staysInWindow(data.segments ?? [], data.window_start);
       setTrail({ hash, segments });
       setRoutines(routineReply.routines ?? []);
       setTrailBusy(null);
@@ -403,7 +421,7 @@ export function AreaCard({
    * for the move from the previous stop. A time filter on the arrival time gives kepler's time playback bar at the bottom
    * of the map; the "incremental" window keeps the start fixed, so the trail grows as it plays.
    */
-  const drawTrailPlayback = async (segments: Segment[]) => {
+  const drawTrailPlayback = async (segments: Stay[]) => {
     if (!segments.length) return;
     const seen = new Map<string, number>();
     const rows: Record<string, string | number>[] = [];
@@ -423,16 +441,16 @@ export function AreaCard({
       rows.push({
         ...base,
         kind: "visit",
-        // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
-        arrived_at: s.arrived_at,
+        // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone (clipped to the window)
+        arrived_at: s.from,
         // what the tooltip shows: kepler prints timestamps in UTC there
-        time_myt: `${s.arrived_at.slice(0, 10)} ${s.arrived_at.slice(11, 16)}`,
+        time_myt: `${s.from.slice(0, 10)} ${s.from.slice(11, 16)}`,
         lat0: i ? segments[i - 1].cell_lat : s.cell_lat,
         lng0: i ? segments[i - 1].cell_lng : s.cell_lng,
         ...labels,
       });
       // still there: a sample every SAMPLE_MIN minutes of the stay (no move, no label)
-      const start = Date.parse(s.arrived_at);
+      const start = Date.parse(s.from);
       for (let at = start + SAMPLE_MIN * 60_000; at < start + s.duration_min * 60_000; at += SAMPLE_MIN * 60_000) {
         const iso = isoMyt(at);
         rows.push({
@@ -594,6 +612,12 @@ export function AreaCard({
       {want.has("subscribers") ? (
       <section>
         <h3 className="mb-1 text-[12px] font-medium text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
+        <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="relative grid size-3.5 shrink-0 place-items-center rounded-full bg-foreground/10 ring-1 ring-foreground/15">
+            <span className="size-1.5 rounded-full bg-foreground/50" />
+          </span>
+          On the map, the soft circle around each tower is how many people it serves; its colour is the tower&rsquo;s status.
+        </p>
         <ul className="flex max-h-44 flex-col gap-0.5 overflow-y-auto text-[12px]">
           {area.subscribers.map((s) => (
             <li key={s.msisdn_hash}>
@@ -690,7 +714,12 @@ export function AreaCard({
               <ol className="flex flex-col gap-0.5 text-[12px]">
                 {trail.segments.map((s, i) => (
                   <li key={`${s.arrived_at}-${i}`} className="flex gap-2 rounded px-1.5 py-0.5">
-                    <span className="w-9 tabular-nums text-muted-foreground">{hhmm(s.arrived_at)}</span>
+                    <span
+                      className="w-9 tabular-nums text-muted-foreground"
+                      title={s.clipped ? `Arrived ${s.arrived_at.slice(0, 10)} ${hhmm(s.arrived_at)}; the 24-hour window starts at ${hhmm(s.from)}` : undefined}
+                    >
+                      {hhmm(s.from)}
+                    </span>
                     <span className="font-medium">{s.serving_cell}</span>
                     <span className="ml-auto text-muted-foreground">{s.left_at ? `${Math.round(s.duration_min)} min` : "now"}</span>
                   </li>

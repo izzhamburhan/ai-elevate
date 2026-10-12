@@ -1,0 +1,26 @@
+diff --git a/node_modules/@kepler.gl/components/dist/cjs/common/time-slider-marker.js b/node_modules/@kepler.gl/components/dist/cjs/common/time-slider-marker.js
+index 1d6cec3..f8451ea 100644
+--- a/node_modules/@kepler.gl/components/dist/cjs/common/time-slider-marker.js
++++ b/node_modules/@kepler.gl/components/dist/cjs/common/time-slider-marker.js
+@@ -40,7 +40,7 @@ var TICK_FORMATS = {
+   millisecond: '.SSS',
+   second: ':ss',
+   minute: 'HH:mm',
+-  hour: 'HH A',
++  hour: 'HH:00',
+   day: 'ddd DD',
+   week: 'MMM DD',
+   month: 'MMM',
+diff --git a/node_modules/@kepler.gl/components/dist/esm/common/time-slider-marker.js b/node_modules/@kepler.gl/components/dist/esm/common/time-slider-marker.js
+index 539d5ce..acd76d7 100644
+--- a/node_modules/@kepler.gl/components/dist/esm/common/time-slider-marker.js
++++ b/node_modules/@kepler.gl/components/dist/esm/common/time-slider-marker.js
+@@ -30,7 +30,7 @@ var TICK_FORMATS = {
+   millisecond: '.SSS',
+   second: ':ss',
+   minute: 'HH:mm',
+-  hour: 'HH A',
++  hour: 'HH:00',
+   day: 'ddd DD',
+   week: 'MMM DD',
+   month: 'MMM',

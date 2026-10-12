@@ -480,7 +480,7 @@ export function HealPanel({ runId }: { runId?: string }) {
                       tone={state.failed_status === "UP" ? "text-green" : state.failed_status === "DEGRADED" ? "text-amber" : "text-red"}
                     />
                     <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red" : undefined} />
-                    <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-green" : undefined} />
+                    <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now == null ? undefined : now < state.threshold ? "text-green" : "text-red"} />
                     <Tile label="Incident" value={(state.incident?.status ?? "none").toLowerCase()} tone={state.incident?.status === "RESOLVED" ? "text-green" : undefined} />
                   </div>
                   <section>

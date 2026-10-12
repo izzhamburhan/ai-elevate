@@ -53,10 +53,42 @@ CLUSTERS = [
     ("CL_SW_02", "Miri", "Sarawak", "SARAWAK", 4.3995, 113.9914, "Urban", "MRI"),
     ("CL_SW_03", "Sibu", "Sarawak", "SARAWAK", 2.2870, 111.8305, "Sub Urban", "SBU"),
     ("CL_SW_04", "Bintulu", "Sarawak", "SARAWAK", 3.1700, 113.0300, "Sub Urban", "BTU"),
+    # wider footprint: more of the Klang Valley plus secondary towns in every state
+    ("CL_KL_06", "Mont Kiara", "Central", "WP KUALA LUMPUR", 3.1700, 101.6500, "Dense Urban", "KUL"),
+    ("CL_KL_07", "Setapak", "Central", "WP KUALA LUMPUR", 3.1980, 101.7180, "Urban", "KUL"),
+    ("CL_KL_08", "Bukit Jalil", "Central", "WP KUALA LUMPUR", 3.0580, 101.6900, "Urban", "KUL"),
+    ("CL_KL_09", "Wangsa Maju", "Central", "WP KUALA LUMPUR", 3.2050, 101.7350, "Urban", "KUL"),
+    ("CL_SL_09", "Ampang", "Central", "SELANGOR", 3.1500, 101.7600, "Urban", "HLG"),
+    ("CL_SL_10", "Kota Damansara", "Central", "SELANGOR", 3.1550, 101.5850, "Urban", "PTL"),
+    ("CL_SL_11", "Selayang", "Central", "SELANGOR", 3.2600, 101.6550, "Urban", "GBK"),
+    ("CL_SL_12", "Semenyih", "Central", "SELANGOR", 2.9500, 101.8430, "Sub Urban", "HLG"),
+    ("CL_SL_13", "Sepang", "Central", "SELANGOR", 2.7456, 101.7072, "Rural", "SPG"),
+    ("CL_SL_14", "Kuala Selangor", "Central", "SELANGOR", 3.3400, 101.2500, "Rural", "KSL"),
+    ("CL_PG_04", "Bukit Mertajam", "Northern", "PULAU PINANG", 5.3630, 100.4610, "Sub Urban", "SPT"),
+    ("CL_PK_03", "Teluk Intan", "Northern", "PERAK", 4.0250, 101.0210, "Sub Urban", "HPR"),
+    ("CL_PK_04", "Manjung", "Northern", "PERAK", 4.2167, 100.7000, "Sub Urban", "MNJ"),
+    ("CL_PL_01", "Kangar", "Northern", "KEDAH & PERLIS", 6.4414, 100.1986, "Sub Urban", "KGR"),
+    ("CL_KD_03", "Langkawi", "Northern", "KEDAH & PERLIS", 6.3200, 99.8500, "Rural", "LGK"),
+    ("CL_KD_04", "Kulim", "Northern", "KEDAH & PERLIS", 5.3650, 100.5620, "Sub Urban", "KLM"),
+    ("CL_JH_04", "Muar", "Southern", "JOHOR", 2.0442, 102.5689, "Sub Urban", "MUR"),
+    ("CL_JH_05", "Kluang", "Southern", "JOHOR", 2.0305, 103.3185, "Sub Urban", "KLU"),
+    ("CL_JH_06", "Pasir Gudang", "Southern", "JOHOR", 1.4700, 103.9000, "Urban", "JBH"),
+    ("CL_ML_02", "Alor Gajah", "Southern", "MELAKA", 2.3804, 102.2089, "Rural", "AGJ"),
+    ("CL_NS_02", "Nilai", "Southern", "NEGERI SEMBILAN", 2.8150, 101.8000, "Sub Urban", "SRB"),
+    ("CL_NS_03", "Port Dickson", "Southern", "NEGERI SEMBILAN", 2.5228, 101.7960, "Rural", "PDS"),
+    ("CL_PH_03", "Bentong", "Eastern", "PAHANG", 3.5226, 101.9087, "Rural", "BTG"),
+    ("CL_PH_04", "Cameron Highlands", "Eastern", "PAHANG", 4.4700, 101.3770, "Rural", "CHL"),
+    ("CL_TR_02", "Kemaman", "Eastern", "TERENGGANU", 4.2333, 103.4167, "Sub Urban", "KMN"),
+    # Kelantan stays far from Kuala Krai: the scripted flood cluster anchors on the nearest cluster (Kota Bharu)
+    ("CL_KN_02", "Gua Musang", "Eastern", "KELANTAN", 4.8823, 101.9644, "Rural", "GMS"),
+    ("CL_SB_04", "Lahad Datu", "Sabah", "SABAH", 5.0268, 118.3270, "Sub Urban", "LDU"),
+    ("CL_SB_05", "Keningau", "Sabah", "SABAH", 5.3378, 116.1602, "Rural", "KNG"),
+    ("CL_SW_05", "Samarahan", "Sarawak", "SARAWAK", 1.4600, 110.4900, "Sub Urban", "KCH"),
+    ("CL_SW_06", "Sri Aman", "Sarawak", "SARAWAK", 1.2370, 111.4620, "Rural", "SAM"),
 ]
 
 # Sites per cluster and spread (km) by morphology
-MORPH_SITES = {"Dense Urban": 18, "Urban": 14, "Sub Urban": 9, "Rural": 6}
+MORPH_SITES = {"Dense Urban": 26, "Urban": 19, "Sub Urban": 12, "Rural": 8}
 MORPH_SPREAD_KM = {"Dense Urban": 1.3, "Urban": 2.0, "Sub Urban": 3.0, "Rural": 4.5}
 MORPH_RADIUS_KM = {"Dense Urban": 0.55, "Urban": 0.9, "Sub Urban": 1.5, "Rural": 2.6}
 

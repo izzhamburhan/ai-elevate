@@ -1,39 +1,69 @@
 area_id,cluster,sme_count,fibre_serviceable_pct,tm_business_penetration_pct,mobile_only_sme_pct,broadband_enquiries_90d,dominant_sector,synthetic,generator
-AREA-ALORSE,Alor Setar,3511,66.0,35.7,36.1,268,Retail & F&B,true,opportunity-sme-v1
-AREA-BANGSA,Bangsar,3329,61.7,36.0,30.2,166,Professional services,true,opportunity-sme-v1
-AREA-BATUPA,Batu Pahat,1115,80.1,29.9,19.3,44,Professional services,true,opportunity-sme-v1
-AREA-BAYANL,Bayan Lepas,3453,64.1,22.7,27.3,276,Professional services,true,opportunity-sme-v1
-AREA-BINTUL,Bintulu,1133,77.7,37.1,25.4,59,Retail & F&B,true,opportunity-sme-v1
-AREA-BUKITB,Bukit Bintang,6443,67.0,29.1,20.7,323,Light manufacturing,true,opportunity-sme-v1
-AREA-BUTTER,Butterworth,3455,86.7,33.5,15.8,118,Hospitality & tourism,true,opportunity-sme-v1
-AREA-CHERAS,Cheras,3515,57.9,21.8,23.2,143,Professional services,true,opportunity-sme-v1
-AREA-CYBERJ,Cyberjaya,1231,51.1,37.8,26.2,53,Logistics,true,opportunity-sme-v1
-AREA-GEORGE,George Town,7112,58.1,23.1,24.8,496,Retail & F&B,true,opportunity-sme-v1
-AREA-IPOH,Ipoh,3777,84.4,33.8,19.1,246,Hospitality & tourism,true,opportunity-sme-v1
-AREA-ISKAND,Iskandar Puteri,3612,80.1,35.6,30.4,145,Hospitality & tourism,true,opportunity-sme-v1
-AREA-JOHORB,Johor Bahru,7694,77.3,31.7,25.8,571,Light manufacturing,true,opportunity-sme-v1
-AREA-KAJANG,Kajang,1099,69.9,35.9,27.8,47,Professional services,true,opportunity-sme-v1
-AREA-KEPONG,Kepong,3707,80.8,23.7,21.5,220,Hospitality & tourism,true,opportunity-sme-v1
-AREA-KLANG,Klang,1230,91.1,36.1,20.0,47,Professional services,true,opportunity-sme-v1
-AREA-KLCC,KLCC,8446,66.8,19.5,20.3,442,Retail & F&B,true,opportunity-sme-v1
-AREA-KOTABH,Kota Bharu,3719,83.2,22.7,18.1,157,Retail & F&B,true,opportunity-sme-v1
-AREA-KOTAKI,Kota Kinabalu,3332,68.2,25.3,33.7,139,Hospitality & tourism,true,opportunity-sme-v1
-AREA-KUALAT,Kuala Terengganu,3250,62.9,27.7,30.3,198,Professional services,true,opportunity-sme-v1
-AREA-KUANTA,Kuantan,3225,70.7,20.7,23.1,132,Light manufacturing,true,opportunity-sme-v1
-AREA-KUCHIN,Kuching,3822,55.9,29.9,31.6,161,Professional services,true,opportunity-sme-v1
-AREA-LABUAN,Labuan,1153,72.3,30.0,30.9,80,Retail & F&B,true,opportunity-sme-v1
-AREA-MELAKA,Melaka Tengah,3969,59.6,22.5,33.4,178,Retail & F&B,true,opportunity-sme-v1
-AREA-MIRI,Miri,3443,70.5,34.6,32.7,233,Retail & F&B,true,opportunity-sme-v1
-AREA-PETALI,Petaling Jaya,3286,75.7,18.1,20.2,168,Light manufacturing,true,opportunity-sme-v1
-AREA-PUCHON,Puchong,1211,66.3,38.4,32.7,52,Retail & F&B,true,opportunity-sme-v1
-AREA-PUTRAJ,Putrajaya,3890,61.7,29.7,29.9,149,Professional services,true,opportunity-sme-v1
-AREA-RAWANG,Rawang,257,52.7,35.6,26.4,14,Light manufacturing,true,opportunity-sme-v1
-AREA-SANDAK,Sandakan,1149,57.8,16.6,27.1,91,Light manufacturing,true,opportunity-sme-v1
-AREA-SEREMB,Seremban,3455,64.1,37.4,26.2,200,Professional services,true,opportunity-sme-v1
-AREA-SHAHAL,Shah Alam,3594,78.5,39.9,32.0,181,Light manufacturing,true,opportunity-sme-v1
-AREA-SIBU,Sibu,1249,61.7,20.7,23.0,44,Professional services,true,opportunity-sme-v1
-AREA-SUBANG,Subang Jaya,3691,75.4,27.6,32.2,177,Hospitality & tourism,true,opportunity-sme-v1
-AREA-SUNGAI,Sungai Petani,1116,86.0,18.8,19.7,66,Hospitality & tourism,true,opportunity-sme-v1
-AREA-TAIPIN,Taiping,1224,77.1,26.4,30.0,51,Retail & F&B,true,opportunity-sme-v1
-AREA-TAWAU,Tawau,1366,62.5,21.3,32.7,72,Retail & F&B,true,opportunity-sme-v1
-AREA-TEMERL,Temerloh,320,78.6,24.5,26.8,19,Hospitality & tourism,true,opportunity-sme-v1
+AREA-ALORGA,Alor Gajah,422,84.5,25.3,27.3,19,Professional services,true,opportunity-sme-v1
+AREA-ALORSE,Alor Setar,4765,77.0,35.7,33.4,335,Retail & F&B,true,opportunity-sme-v1
+AREA-AMPANG,Ampang,4863,78.4,26.8,30.2,309,Logistics,true,opportunity-sme-v1
+AREA-BANGSA,Bangsar,4518,79.5,36.0,25.7,195,Professional services,true,opportunity-sme-v1
+AREA-BATUPA,Batu Pahat,1487,78.6,29.9,19.7,60,Professional services,true,opportunity-sme-v1
+AREA-BAYANL,Bayan Lepas,4686,58.5,22.7,28.7,391,Professional services,true,opportunity-sme-v1
+AREA-BENTON,Bentong,353,75.2,30.8,30.3,13,Professional services,true,opportunity-sme-v1
+AREA-BINTUL,Bintulu,1511,67.0,37.1,28.0,86,Retail & F&B,true,opportunity-sme-v1
+AREA-BUKITB,Bukit Bintang,9306,64.4,29.1,21.4,477,Light manufacturing,true,opportunity-sme-v1
+AREA-BUKITJ,Bukit Jalil,5495,85.4,28.8,28.0,311,Retail & F&B,true,opportunity-sme-v1
+AREA-BUKITM,Bukit Mertajam,1659,69.2,34.3,30.6,118,Hospitality & tourism,true,opportunity-sme-v1
+AREA-BUTTER,Butterworth,4689,88.8,33.5,15.3,156,Hospitality & tourism,true,opportunity-sme-v1
+AREA-CAMERO,Cameron Highlands,435,69.6,20.6,34.4,15,Retail & F&B,true,opportunity-sme-v1
+AREA-CHERAS,Cheras,4770,65.9,21.8,21.2,182,Professional services,true,opportunity-sme-v1
+AREA-CYBERJ,Cyberjaya,1641,57.3,37.8,24.7,67,Logistics,true,opportunity-sme-v1
+AREA-GEORGE,George Town,10273,62.6,23.1,23.7,692,Retail & F&B,true,opportunity-sme-v1
+AREA-GUAMUS,Gua Musang,435,67.4,16.5,32.8,24,Professional services,true,opportunity-sme-v1
+AREA-IPOH,Ipoh,5126,69.1,33.8,23.0,380,Hospitality & tourism,true,opportunity-sme-v1
+AREA-ISKAND,Iskandar Puteri,4902,67.7,35.6,33.5,217,Hospitality & tourism,true,opportunity-sme-v1
+AREA-JOHORB,Johor Bahru,11113,76.8,31.7,25.9,828,Light manufacturing,true,opportunity-sme-v1
+AREA-KAJANG,Kajang,1465,57.7,35.9,30.8,68,Professional services,true,opportunity-sme-v1
+AREA-KANGAR,Kangar,1812,66.0,19.7,20.9,107,Professional services,true,opportunity-sme-v1
+AREA-KEMAMA,Kemaman,1510,95.0,25.9,27.1,95,Retail & F&B,true,opportunity-sme-v1
+AREA-KENING,Keningau,366,68.3,24.9,32.4,14,Logistics,true,opportunity-sme-v1
+AREA-KEPONG,Kepong,5031,56.8,23.7,27.5,362,Hospitality & tourism,true,opportunity-sme-v1
+AREA-KLANG,Klang,1641,81.9,36.1,22.3,68,Professional services,true,opportunity-sme-v1
+AREA-KLCC,KLCC,12200,70.6,19.5,19.4,619,Retail & F&B,true,opportunity-sme-v1
+AREA-KLUANG,Kluang,1525,57.5,25.2,29.1,96,Retail & F&B,true,opportunity-sme-v1
+AREA-KOTABH,Kota Bharu,5048,82.4,22.7,18.3,215,Retail & F&B,true,opportunity-sme-v1
+AREA-KOTADA,Kota Damansara,4905,64.1,35.7,28.5,183,Retail & F&B,true,opportunity-sme-v1
+AREA-KOTAKI,Kota Kinabalu,4522,61.6,25.3,35.4,198,Hospitality & tourism,true,opportunity-sme-v1
+AREA-KUALAS,Kuala Selangor,372,66.3,40.0,23.7,24,Professional services,true,opportunity-sme-v1
+AREA-KUALAT,Kuala Terengganu,4410,73.0,27.7,27.7,248,Professional services,true,opportunity-sme-v1
+AREA-KUANTA,Kuantan,4376,61.2,20.7,25.5,193,Light manufacturing,true,opportunity-sme-v1
+AREA-KUCHIN,Kuching,5187,64.0,29.9,29.6,206,Professional services,true,opportunity-sme-v1
+AREA-KULIM,Kulim,1445,61.9,33.1,36.6,74,Hospitality & tourism,true,opportunity-sme-v1
+AREA-LABUAN,Labuan,1537,60.1,30.0,34.0,117,Retail & F&B,true,opportunity-sme-v1
+AREA-LAHADD,Lahad Datu,1697,80.4,38.4,29.0,97,Logistics,true,opportunity-sme-v1
+AREA-LANGKA,Langkawi,378,58.3,26.1,24.6,27,Retail & F&B,true,opportunity-sme-v1
+AREA-MANJUN,Manjung,1737,79.2,19.6,18.6,72,Hospitality & tourism,true,opportunity-sme-v1
+AREA-MELAKA,Melaka Tengah,5386,66.6,22.5,31.7,229,Retail & F&B,true,opportunity-sme-v1
+AREA-MIRI,Miri,4673,63.1,34.6,34.5,335,Retail & F&B,true,opportunity-sme-v1
+AREA-MONTKI,Mont Kiara,10978,76.4,30.7,33.0,649,Retail & F&B,true,opportunity-sme-v1
+AREA-MUAR,Muar,1683,79.1,38.7,18.1,75,Logistics,true,opportunity-sme-v1
+AREA-NILAI,Nilai,1663,76.6,21.4,29.9,59,Retail & F&B,true,opportunity-sme-v1
+AREA-PASIRG,Pasir Gudang,5628,65.8,24.0,24.9,400,Logistics,true,opportunity-sme-v1
+AREA-PETALI,Petaling Jaya,4459,75.9,18.1,20.1,227,Light manufacturing,true,opportunity-sme-v1
+AREA-PORTDI,Port Dickson,445,61.5,27.9,23.8,24,Professional services,true,opportunity-sme-v1
+AREA-PUCHON,Puchong,1615,81.6,38.4,28.9,61,Retail & F&B,true,opportunity-sme-v1
+AREA-PUTRAJ,Putrajaya,5279,70.8,29.7,27.7,189,Professional services,true,opportunity-sme-v1
+AREA-RAWANG,Rawang,343,52.7,35.6,26.4,19,Light manufacturing,true,opportunity-sme-v1
+AREA-SAMARA,Samarahan,1921,74.9,38.1,21.5,120,Professional services,true,opportunity-sme-v1
+AREA-SANDAK,Sandakan,1532,71.6,16.6,23.7,110,Light manufacturing,true,opportunity-sme-v1
+AREA-SELAYA,Selayang,4388,80.8,36.7,29.2,314,Retail & F&B,true,opportunity-sme-v1
+AREA-SEMENY,Semenyih,1464,71.2,17.6,34.5,117,Professional services,true,opportunity-sme-v1
+AREA-SEPANG,Sepang,420,63.0,33.2,33.4,31,Logistics,true,opportunity-sme-v1
+AREA-SEREMB,Seremban,4690,71.1,37.4,24.4,257,Professional services,true,opportunity-sme-v1
+AREA-SETAPA,Setapak,4537,76.0,34.3,29.3,348,Light manufacturing,true,opportunity-sme-v1
+AREA-SHAHAL,Shah Alam,4877,61.1,39.9,36.3,281,Light manufacturing,true,opportunity-sme-v1
+AREA-SIBU,Sibu,1665,48.0,20.7,26.5,64,Professional services,true,opportunity-sme-v1
+AREA-SRIAMA,Sri Aman,437,54.2,38.2,24.9,18,Professional services,true,opportunity-sme-v1
+AREA-SUBANG,Subang Jaya,5009,66.9,27.6,34.3,257,Hospitality & tourism,true,opportunity-sme-v1
+AREA-SUNGAI,Sungai Petani,1488,83.0,18.8,20.4,91,Hospitality & tourism,true,opportunity-sme-v1
+AREA-TAIPIN,Taiping,1632,66.4,26.4,32.7,74,Retail & F&B,true,opportunity-sme-v1
+AREA-TAWAU,Tawau,1821,76.2,21.3,29.3,87,Retail & F&B,true,opportunity-sme-v1
+AREA-TELUKI,Teluk Intan,1485,67.1,20.8,28.6,74,Retail & F&B,true,opportunity-sme-v1
+AREA-TEMERL,Temerloh,427,80.9,24.5,26.3,25,Hospitality & tourism,true,opportunity-sme-v1
+AREA-WANGSA,Wangsa Maju,5111,76.3,33.1,25.6,166,Retail & F&B,true,opportunity-sme-v1

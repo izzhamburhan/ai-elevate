@@ -19,8 +19,8 @@ from menara_core.testing import build_test_db
 HISTORY_START = -40320
 T0 = datetime(2026, 11, 14, 7, 0)  # a Saturday, 07:00
 
-# Rows after minute -1440, recorded from `main` before the history existed (count, short hash).
-LAST_TWO_DAYS = (579, "0ac3d3bc2cf9")
+# Rows after minute -1440 (count, short hash), recorded when weekday lunch and errand side trips were added.
+LAST_TWO_DAYS = (583, "a77f4f1b9bfe")
 
 
 def weekday(minute: int) -> int:
@@ -159,3 +159,22 @@ def test_the_default_seed_has_plenty_of_weekend_mall_visitors(tmp_path: Path) ->
         }
         assert in_range_movers and len(set(days) & in_range_movers) / len(in_range_movers) >= 0.25
         assert raw.execute("SELECT MAX(start_min) FROM subscriber_cell_visit").fetchone()[0] <= 480
+
+
+def test_side_trips_leave_from_and_return_to_the_commute(conn: sqlite3.Connection) -> None:
+    """Lunch (around 12:15) is near work and goes back to work; an errand on the way back is near home and goes on home."""
+    coords, homes = _coords(conn), _homes(conn)
+    lunches = errands = 0
+    for sub, rows in _visits(conn).items():
+        for (_, before), (minute, tower), (leave, after) in zip(rows, rows[1:], rows[2:], strict=False):
+            after_seven = (minute - HISTORY_START) % 1440  # minutes after 07:00 that day
+            if 280 <= after_seven <= 350 and before == after != homes[sub] != tower:
+                lunches += 1
+                assert not is_weekend(minute)
+                assert 0.8 <= haversine_km(*coords[before], *coords[tower]) <= 3.0
+                assert 40 <= leave - minute <= 70
+            elif after_seven >= 600 and after == homes[sub] and leave - minute != 30 and not is_weekend(minute):
+                errands += 1
+                assert 1.0 <= haversine_km(*coords[after], *coords[tower]) <= 4.0
+                assert 25 <= leave - minute <= 55
+    assert lunches + errands > 0  # the small test network has few towers close enough for side trips

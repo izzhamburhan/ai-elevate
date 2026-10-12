@@ -241,7 +241,7 @@ def build_sites_other(ctx):
 
     # --- AOP (planned rollout) ---------------------------------------------
     aop = []
-    for i in range(1, 71):
+    for i in range(1, len(ctx.sites4g) // 7 + 1):
         c = rng.choice(list(ctx.clusters.values()))
         lat, lng = _scatter(rng, c["lat"], c["lng"], R.MORPH_SPREAD_KM[c["morph"]] * 1.4)
         sid = _new_id(rng, ctx.used_ids, rng.choice(R.SITE_PREFIX[c["region"]]))
@@ -622,7 +622,8 @@ def build_ntt(ctx):
     def ticket(site, created, fault, final, forced_symptom=None):
         ntt_ticket(ctx, rng, events, outage_days, site, created, fault, final, forced_symptom)
 
-    for _ in range(520):
+    # volumes scale with the network so a bigger footprint keeps the same ticket density
+    for _ in range(round(1.1 * len(ctx.sites4g))):
         site = rng.choice(ctx.sites4g)
         created = ref_dt - dt.timedelta(days=rng.uniform(0, 150), hours=rng.uniform(0, 12))
         fault = weighted(rng, R.NTT_FAULTS)
@@ -631,7 +632,7 @@ def build_ntt(ctx):
         final = "Open" if rng.random() < p_open else rng.choice(R.NTT_CLOSED_STATUSES)
         ticket(site, created, fault, final)
     # guarantee a handful of live total outages for the demo personas
-    for site in rng.sample(ctx.sites4g, 10):
+    for site in rng.sample(ctx.sites4g, max(10, len(ctx.sites4g) // 35)):
         ticket(site, ref_dt - dt.timedelta(hours=rng.uniform(2, 40)), "Total Outage", "Open", "LTE - 4G Service Down")
         ctx.open_outage_sites.add(site["id"])
 
@@ -641,7 +642,7 @@ def build_ntt(ctx):
 
     # 5G (DNB) incidents
     inc_events = []
-    for k in range(170):
+    for k in range(round(1.6 * len(ctx.sites5g))):
         site = rng.choice(ctx.sites5g)
         created = ref_dt - dt.timedelta(days=rng.uniform(0, 150), hours=rng.uniform(0, 12))
         age = (ref_dt - created).days
@@ -680,7 +681,7 @@ def build_plan_maintenance(ctx):
     def rfc(host, region, created, start, end, status, nca="CA", subnet=None):
         rows.append(rfc_row(rng, len(rows) + 1, host, region, created, start, end, status, nca, subnet))
 
-    for _ in range(420):
+    for _ in range(round(0.9 * len(ctx.sites4g))):
         if rng.random() < 0.88:
             site = rng.choice(ctx.sites4g)
             host, region, subnet = site["id"], site["region"].upper(), None
@@ -690,7 +691,7 @@ def build_plan_maintenance(ctx):
         start, end, status = rfc_window(rng, ref_dt, created)
         rfc(host, region, created, start, end, status, "CA" if rng.random() < 0.7 else "NCA", subnet)
     # sites under active maintenance right now (WIMPLEMENTER + CA, window covering ref date)
-    for site in rng.sample(ctx.sites4g, 12):
+    for site in rng.sample(ctx.sites4g, max(12, len(ctx.sites4g) // 40)):
         created = ref_dt - dt.timedelta(days=rng.uniform(3, 10))
         start = ref_dt - dt.timedelta(hours=rng.uniform(1, 30))
         end = ref_dt + dt.timedelta(hours=rng.uniform(4, 48))
@@ -776,7 +777,7 @@ def build_dashboards(ctx):
     by_region = {}
     for s in ctx.sites4g:
         by_region.setdefault(s["region"], []).append(s)
-    for i in range(1, 4201):
+    for i in range(1, 9 * len(ctx.sites4g) + 1):
         created = start + dt.timedelta(seconds=rng.uniform(0, span))
         region = weighted(rng, regions)
         site = rng.choice(by_region[region])

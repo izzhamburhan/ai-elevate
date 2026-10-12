@@ -773,7 +773,7 @@ def get_business_demand_signals(day: str | None = None, hour_from: int = 12, hou
             "areas_scored": len(rows), "units": "indices 0-1 (percentile-based demand, capacity pressure, reliability risk)",
             "method": {
                 "demand_index": "0.35 x percentile of forecast footfall + 0.25 x percentile of uplift vs the same window in the last 4 weeks (median) "
-                                "+ 0.2 x percentile of booth sign-ups + 0.2 x percentile of event attendance in reach (all 38 areas)",
+                                f"+ 0.2 x percentile of booth sign-ups + 0.2 x percentile of event attendance in reach (all {len(rows)} areas)",
                 "capacity_pressure": "0.5 x clip(share of nearby cell-hours forecast >= 85% PRB / 0.2) + 0.5 x clip((largest rise of a cell's "
                                      "forecast peak over its usual peak (median of the same window in the last 3 weeks) - 10) / 15 points)",
                 "reliability_risk": "failure-model level of the riskiest nearby site: HIGH 1.0, MEDIUM 0.6, else up to 0.5 by score",
