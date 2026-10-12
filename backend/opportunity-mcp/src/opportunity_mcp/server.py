@@ -1,7 +1,7 @@
 """opportunity-mcp server. Run: `uv run python -m opportunity_mcp --transport streamable-http --port 8127`.
 
 Tools are always listed explicitly (the --search flag that run_all.py passes is accepted and ignored): there are only
-four, and the Hermes Business Hypothesis Agent allowlists them by name.
+seven, and the Hermes Business Hypothesis Agent allowlists them by name.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pydantic import Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from opportunity_mcp import graph, rank, simulate
+from opportunity_mcp import commercial, graph, predictive, rank, simulate
 
 NAME = "opportunity"
 DEFAULT_PORT = 8127
@@ -110,6 +110,38 @@ def build_server() -> FastMCP:
         envelope = _envelope({**result, "geojson": {"type": "FeatureCollection", "features": features}}, "opportunity_simulate")
         envelope["data"]["limitations"] = simulate.LIMITATIONS + rank.LIMITATIONS
         return envelope
+
+    def _commercial(data: dict[str, Any], tool: str) -> dict[str, Any]:
+        envelope = _envelope(data, tool)
+        envelope["data"]["limitations"] = rank.LIMITATIONS  # application caveats stay in data.caveats
+        envelope["data"]["labels"] = {"data": "synthetic", "figures": "calculated from stated assumptions", "money": "indicative, not TM revenue or cost"}
+        return envelope
+
+    @mcp.tool(annotations=READ_ONLY, description=(
+        "Order 7 Revenue Leak Hunter: areas whose sites show repeat faults in the last 60 days, with avoidable field-visit cost, "
+        "preventive-fix cost, complaint-driven revenue exposure (low/mid/high from stated assumptions), affected sites, evidence, "
+        "mitigation and a map layer. Synthetic; exposure is not lost revenue."))
+    def opportunity_revenue_leaks(top_k: Annotated[int, Field(ge=1, le=5)] = 3) -> dict[str, Any]:
+        return _commercial(commercial.revenue_leaks(_graph(), top_k), "opportunity_revenue_leaks")
+
+    @mcp.tool(annotations=READ_ONLY, description=(
+        "Order 7 Business Opportunity of Absence: areas with demand and a verified serviceability gap, a known capacity constraint, "
+        "or missing evidence (never treated as no coverage); the strongest case of each kind with evidence, constraint, survey or "
+        "expansion action and an indicative SME opportunity. Uses Order 5 demand signals only if that service is running."))
+    async def opportunity_absence_gaps() -> dict[str, Any]:
+        og = _graph()
+        context = await predictive.demand_signals([a["area_id"] for a in (og.graph.nodes[n] for n in og.nodes("area"))])
+        return _commercial(commercial.absence_gaps(og, predictive=context), "opportunity_absence_gaps")
+
+    @mcp.tool(annotations=READ_ONLY, description=(
+        "Order 7 Connectivity as a Product: conditional event-connectivity packages (capacity boost, vendor connectivity, media "
+        "uplink) for an upcoming synthetic event, with readiness, cost items, indicative cost-plus prices, feasibility checks "
+        "(infeasible packages are rejected) and a draft proposal. Default event: the Order 4 event opportunity (Melaka)."))
+    def opportunity_event_packages(event_id: Annotated[str | None, Field(max_length=64)] = None) -> dict[str, Any]:
+        try:
+            return _commercial(commercial.event_packages(_graph(), event_id), "opportunity_event_packages")
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
 
     return mcp
 

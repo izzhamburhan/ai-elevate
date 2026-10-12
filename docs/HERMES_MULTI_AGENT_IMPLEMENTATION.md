@@ -90,7 +90,7 @@ The gateway discovers actual registered schemas using FastMCP and validates argu
 | Engineer / NetOps | `get_sites`, `search_sites`, `get_site_info`, `get_site_cells`, `get_ran_site_info`, `get_ran_kpi`, `get_ran_kpi_summary`, `get_worst_cells`, `get_congested_cells`, `get_ntt_tickets`, `get_ntt_summary`, `get_coverage_layer`, `get_plan_maintenance` |
 | Business / NetOps | `get_sites`, `get_site_info`, `search_locations`, `list_location_categories`, `lookup_admin_area`, `list_admin_areas`, `get_admin_boundary` |
 | Orchestrator | No direct source-service access; local `delegate_specialist` with only the three specialist IDs |
-| Business Hypothesis / Opportunity | `opportunity_discover`, `opportunity_explain`, `opportunity_graph_summary`, `opportunity_simulate` (Order 6); `delegate_specialist` limited to `engineer` |
+| Business Hypothesis / Opportunity | `opportunity_discover`, `opportunity_explain`, `opportunity_graph_summary`, `opportunity_simulate` (Order 6), `opportunity_revenue_leaks`, `opportunity_absence_gaps`, `opportunity_event_packages` (Order 7); `delegate_specialist` limited to `engineer` |
 
 Ticket writes/deletes, email, attachments, unrestricted subscriber data, shell and arbitrary agent-selected URLs are absent. Gateway responses carry `{ok, data, error, warnings, source}`. Provenance includes service/tool, retrieval time, read-only status, data class and an untrusted-response marker. Weather model/replay timing metadata is retained. Normal tool invocation never bootstraps weights or alters source datasets.
 

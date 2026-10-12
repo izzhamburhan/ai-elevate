@@ -74,7 +74,8 @@ def test_server_lists_three_read_only_tools_and_rejects_unknown_areas(built, mon
     async def check():
         async with Client(server.build_server()) as client:
             tools = await client.list_tools()
-            assert {t.name for t in tools} == {"opportunity_discover", "opportunity_explain", "opportunity_graph_summary", "opportunity_simulate"}
+            assert {t.name for t in tools} == {"opportunity_discover", "opportunity_explain", "opportunity_graph_summary", "opportunity_simulate",
+                                               "opportunity_revenue_leaks", "opportunity_absence_gaps", "opportunity_event_packages"}
             assert all(t.annotations.read_only_hint and not t.annotations.destructive_hint for t in tools)
             result = await client.call_tool("opportunity_discover", {"top_k": 2})
             assert result.structured_content["synthetic"] is True
@@ -90,4 +91,9 @@ def test_server_lists_three_read_only_tools_and_rejects_unknown_areas(built, mon
             assert {f["properties"]["kind"] for f in data["geojson"]["features"]} >= {"opportunity"}
             unknown = await client.call_tool("opportunity_simulate", {"opportunity_id": "OPP-NOPE"}, raise_on_error=False)
             assert unknown.is_error
+            for tool in ("opportunity_revenue_leaks", "opportunity_absence_gaps", "opportunity_event_packages"):
+                out = await client.call_tool(tool, {})
+                assert out.structured_content["synthetic"] is True and out.structured_content["data"]["labels"]["data"] == "synthetic"
+            missing = await client.call_tool("opportunity_event_packages", {"event_id": "EVT-NOPE"}, raise_on_error=False)
+            assert missing.is_error
     asyncio.run(check())

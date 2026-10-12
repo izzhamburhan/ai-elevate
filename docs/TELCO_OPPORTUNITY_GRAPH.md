@@ -154,4 +154,5 @@ cd frontend && npm run test:hermes && npm run lint && npm run build
 - The Business Hypothesis run takes about 4–5 minutes on the local model, but the ranked cards and map appear immediately from the deterministic graph.
 - The Predictive ML package's tests and LightGBM training cannot run on this Mac host: LightGBM needs Homebrew `libomp`, which is not installed. This was the case before Order 4; use the mlpredict container image instead. Order 4 uses the ML data, not the models.
 - The Business Decision Time Machine (Order 6) builds on these opportunities: see [DECISION_TIME_MACHINE.md](DECISION_TIME_MACHINE.md).
-- Not included: the Revenue Leak Hunter and full commercial apps (Order 7), and live Weather ML or LightGBM inference inside the graph. The Predictive ML data is reused; its models are not called.
+- The Order 7 commercial applications build on this graph: see [COMMERCIAL_APPLICATIONS.md](COMMERCIAL_APPLICATIONS.md).
+- Not included: and live Weather ML or LightGBM inference inside the graph. The Predictive ML data is reused; its models are not called.

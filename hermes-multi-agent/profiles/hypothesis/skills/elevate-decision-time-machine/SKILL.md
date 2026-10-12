@@ -5,7 +5,7 @@ description: Explain a Decision Time Machine simulation of three investment stra
 
 # Decision Time Machine procedure
 
-Use this procedure only when the request asks to explain or recommend a strategy for a simulated scenario. Finish after exactly these steps:
+Use this procedure only when the request asks to explain or recommend a strategy for a simulated scenario (`opportunity_simulate`). Finish after exactly these steps:
 
 1. Call `opportunity_simulate` once with exactly the `opportunity_id`, `budget_rm`, `demand_multiplier`, `capacity_headroom_pct` and `network_risk` given in the request. Omit any that are not given. Do not delegate and do not call other tools.
 2. Write the report (at most 300 words, one line per item):
