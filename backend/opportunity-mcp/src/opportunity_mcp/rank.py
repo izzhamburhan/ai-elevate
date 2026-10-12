@@ -9,6 +9,7 @@ Scores are transparent weighted percentiles. Commercial potential is an assumpti
 
 from __future__ import annotations
 
+import math
 from statistics import mean
 from typing import Any
 
@@ -28,6 +29,12 @@ LIMITATIONS = [
     "Commercial potential is an indicative range from stated take-up and ARPU assumptions, not verified revenue or ROI.",
     "Network feasibility uses the last 7 days of synthetic busy-hour KPIs; field survey and capacity planning are required.",
 ]
+
+
+def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(a))
 
 
 def _percentile(values: dict[str, float]) -> dict[str, float]:
@@ -144,17 +151,17 @@ def _action(kind: str, s: dict[str, Any]) -> str:
 def _risks(kind: str, s: dict[str, Any]) -> list[str]:
     risks = []
     if s["congested_sites"]:
-        risks.append(f"{s['congested_sites']} site(s) congested at busy hour (PRB p95 >= {CONGESTED_PRB:.0f}%).")
+        risks.append(f"{s['congested_sites']} site(s) congested at busy hour (synthetic PRB p95 >= {CONGESTED_PRB:.0f}%).")
     if s["outages_30d"]:
         risks.append(f"{s['outages_30d']} synthetic outage ticket(s) in the last 30 days.")
     if s["complaints_30d"] >= 3:
-        risks.append(f"{s['complaints_30d']} customer complaints in the last 30 days may affect conversion.")
+        risks.append(f"{s['complaints_30d']} synthetic customer complaints in the last 30 days may affect conversion.")
     if s["max_sites_per_backhaul_hub"] >= 4:
-        risks.append(f"A backhaul hub carries {s['max_sites_per_backhaul_hub'] - 1} sites: shared single point of failure.")
+        risks.append(f"A synthetic backhaul hub carries {s['max_sites_per_backhaul_hub'] - 1} sites: shared single point of failure.")
     if kind == "event_surge" and s["heavy_rain_days_30d"] >= 4:
-        risks.append(f"{s['heavy_rain_days_30d']} heavy-rain days (>=20 mm) in the last 30 days: outdoor booth weather risk.")
+        risks.append(f"{s['heavy_rain_days_30d']} synthetic heavy-rain days (>=20 mm) in the last 30 days: outdoor booth weather risk.")
     if kind == "sme_fwa" and s["rsrp_dbm_mean"] is not None and s["rsrp_dbm_mean"] < -105:
-        risks.append(f"Weak measured signal (mean RSRP {s['rsrp_dbm_mean']:.0f} dBm) limits fixed-wireless quality.")
+        risks.append(f"Weak synthetic measured signal (mean RSRP {s['rsrp_dbm_mean']:.0f} dBm) limits fixed-wireless quality.")
     return risks or ["No network risk flags in the synthetic 7/30-day windows."]
 
 
@@ -196,7 +203,9 @@ def discover(og: OpportunityGraph, top_k: int = 3) -> dict[str, Any]:
         opportunities.append({
             "rank": rank, "opportunity_id": opportunity_id, "kind": c["kind"], "title": f"{TITLES[c['kind']]} — {s['cluster']}",
             "where": {"area_id": s["area_id"], "area": s["name"], "cluster": s["cluster"], "state": s["state"], "lat": s["lat"], "lng": s["lng"],
-                      "supporting_site_ids": [x["site_id"] for x in sites]},
+                      "supporting_site_ids": [x["site_id"] for x in sites],
+                      # NTT radius that covers every supporting site from the area centre (NetOps NTT takes one site_id or a radius)
+                      "ntt_check_radius_km": math.ceil(max([_km(s["lat"], s["lng"], x["lat"], x["lng"]) for x in sites] + [1.0]) + 0.5)},
             "why": _why(c["kind"], s), "what_tm_should_do": _action(c["kind"], s),
             "validation_status": "graph-ranked; not validated by agents",
             "hypothesis": f"If TM acts on {TITLES[c['kind']].lower()} in {s['cluster']}, the demand signals above indicate measurable uptake; the existing network can support it.",

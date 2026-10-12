@@ -101,6 +101,27 @@ The commercial assumptions are illustrative, not TM pricing:
 
 Hermes reads GeoJSON nested in Menara envelopes (`data.data.geojson`), so map points from netintel and opportunity tool results now reach the map too. For the agent's context, only the headline features are sent; the full geometry stays in the ledger.
 
+## Feasibility verdicts (deterministic)
+
+Hermes computes each verdict in `hermes-multi-agent/src/elevate_hermes/feasibility.py` from the Engineer's actual results in the ledger (`get_ran_kpi` and `get_ntt_tickets` for the supporting sites). The agent never chooses the verdict.
+
+| Verdict | Rule (any supporting site) |
+|---|---|
+| blocked until repaired | availability < 95% or an open NTT ticket |
+| supported with risk | availability < 99.5%, PRB ≥ 80% or a resolved NTT ticket in the window |
+| not validated | no KPI row for the site, or no valid NTT check covering it |
+| supported | otherwise |
+
+The verdicts reach the agent in the delegation result as `computed_feasibility`, with the instruction to copy each label and only explain it. The finished job stores them as `feasibility`. If the report states a different verdict, the job gets a warning saying the report contradicts the computed verdict, which is authoritative. The UI shows the computed verdicts, never the prose.
+
+NetOps `get_ntt_tickets` matches a single `site_id` only; a comma-separated list silently returns no tickets. Earlier runs that reported "zero NTT tickets" for several sites at once were wrong for that reason. NTT checks now use one radius query per opportunity area: `where.ntt_check_radius_km` around `where.lat`/`where.lng`, with `status="all"`. The graph computes that radius from the real distance to the farthest supporting site, plus 0.5 km. The Order 2 Shah Alam step now uses a 3 km radius around the Shah Alam centre. A comma-list NTT query never counts as a check.
+
+## Ranked versus validated
+
+- **Graph-ranked (about 3 s):** the cards appear at once from the deterministic graph. They are labelled "Graph-ranked … not yet validated by agents", and every card shows "Network feasibility: not yet validated by agents".
+- **Agent-validated (about 4.6 min):** the computed verdict badges and the "Agent-validated run <id> · completed <time> MYT" banner appear only after the real Business Hypothesis run has finished and Hermes has computed verdicts for exactly these opportunities. A failed run keeps the "graph-ranked, unvalidated" label.
+- **Pitch:** after a validated run, **Show last validated run (<id>)** reopens it. It loads the discovery that run's agent actually retrieved, its verdicts and its report, all identified by investigation ID and completion time. The run ID is kept in this browser's `localStorage`; the run itself stays in the Hermes ledger.
+
 ## Running it
 
 The intel and ml databases are derived files. They are git-ignored and built once from a read-only copy of `netops.duckdb`, so nothing is reseeded.
@@ -129,6 +150,7 @@ cd frontend && npm run test:hermes && npm run lint && npm run build
 - All data is synthetic. Scores are rule-based correlations, and the commercial ranges are assumptions, not revenue or ROI.
 - Network feasibility uses daily synthetic KPIs and 7- and 30-day windows. It is not a capacity plan or a premise-level serviceability check.
 - The agent's prose can be imprecise. For example, it once flagged SM4266 at 99.53% as "below 99.5%" after rounding. The tool output and the ledger are authoritative.
-- The Engineer reports the same numbers on every run, but the agent's verdict wording for them can vary. With the identical 62.5% availability at NK4130, George Town was "supported with risk" in one run and "not validated" in another.
+- Before the deterministic classifier existed, the agent's verdict wording varied: with the identical 62.5% availability at NK4130, George Town was "supported with risk" in one run and "not validated" in another. The verdict is now computed; any prose that still disagrees is flagged.
 - The Business Hypothesis run takes about 4–5 minutes on the local model, but the ranked cards and map appear immediately from the deterministic graph.
+- The Predictive ML package's tests and LightGBM training cannot run on this Mac host: LightGBM needs Homebrew `libomp`, which is not installed. This was the case before Order 4; use the mlpredict container image instead. Order 4 uses the ML data, not the models.
 - Not included: the Business Decision Time Machine (Order 6), the Revenue Leak Hunter and full commercial apps (Order 7), and live Weather ML or LightGBM inference inside the graph. The Predictive ML data is reused; its models are not called.

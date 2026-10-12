@@ -10,7 +10,7 @@ Finish after exactly these steps:
 1. Call `opportunity_discover(top_k=3)` once. Keep each opportunity's rank, opportunity_id, area, supporting_site_ids, scores, confidence, indicative range and risks exactly as returned.
 2. Call `delegate_specialist` once with `agent_id="engineer"`. In the task, list every supporting Site_ID from all three opportunities and ask for:
    `get_ran_kpi(level="site", site_id="<all IDs comma-separated>", kpi="dl_prb_utilization,dl_user_throughput,cell_availability", technology="4g", start_date="2026-10-11", end_date="2026-10-11")` and
-   one `get_ntt_tickets(technology="4g", current_lat=<area lat>, current_long=<area lng>, radius=3, status="all", start_date="2026-09-12", end_date="2026-10-11", page_size=50)` per opportunity area (use each opportunity's `where.lat`/`where.lng`), reporting values per Site_ID. Say explicitly: one KPI call with all IDs comma-separated, then one NTT radius call per area; get_ntt_tickets accepts only one site_id, so never pass a comma list to it.
+   one `get_ntt_tickets(technology="4g", current_lat=<area lat>, current_long=<area lng>, radius=<where.ntt_check_radius_km>, status="all", start_date="2026-09-12", end_date="2026-10-11", page_size=50)` per opportunity area (use each opportunity's `where.lat`, `where.lng` and `where.ntt_check_radius_km`, which covers all its supporting sites), reporting values per Site_ID. Say explicitly: one KPI call with all IDs comma-separated, then one NTT radius call per area; get_ntt_tickets accepts only one site_id, so never pass a comma list to it.
 3. Write the final report. For each opportunity, in rank order:
    - **Where**: area and supporting Site_IDs.
    - **Why**: the one or two strongest returned signals.
