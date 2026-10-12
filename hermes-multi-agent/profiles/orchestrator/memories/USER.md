@@ -1,0 +1,1 @@
+The repository owner requests a reliable local hackathon MVP with honest synthetic data and historical replay labeling. Do not publish Git changes or perform network maintenance without explicit authorization.

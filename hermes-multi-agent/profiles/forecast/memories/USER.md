@@ -1,0 +1,1 @@
+The user wants locally executed, reproducible cached weather demonstrations with actual model provenance and clear historical replay labels. No paid APIs or fabricated numerical forecasts are allowed.
