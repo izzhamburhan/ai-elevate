@@ -5,6 +5,8 @@
  * `id` is what the picker sends to the backend as `config.modelName`; the part before the
  * slash picks the provider in `lib/ai/providers.ts`.
  */
+import { localModelLabel } from "@/lib/weather/demo";
+
 export type ChatModelProvider = "deepseek" | "openai" | "gigx" | "local";
 
 export type ChatModel = {
@@ -52,7 +54,7 @@ export const CHAT_MODELS: readonly ChatModel[] = [
     // the actual local model tag comes from LOCAL_LLM_MODEL on the server; the server may
     // override this window with LOCAL_LLM_CONTEXT_WINDOW (e.g. Ollama's num_ctx)
     id: "local/gemma4",
-    name: "Gemma 4 (local)",
+    name: localModelLabel(process.env.NEXT_PUBLIC_LOCAL_LLM_LABEL),
     description: "Ollama / OpenAI-compatible server",
     provider: "local",
     contextWindow: 128_000,

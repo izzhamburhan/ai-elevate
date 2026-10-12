@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Provider } from "react-redux";
-import { mapStyleChange, wrapTo } from "@kepler.gl/actions";
+import { addLayer, mapStyleChange, reorderLayer, wrapTo } from "@kepler.gl/actions";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { KeplerGl, keplerLocaleMessages } from "./kepler-panels";
@@ -14,10 +14,47 @@ import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { BASEMAP_FOR_THEME, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { useKeplerBridge } from "./use-kepler-bridge";
+import { runKeplerCommand } from "@/lib/kepler/commands";
+import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
 
 const SIDE_PANEL_WIDTH = 400;
 /** kepler pads the panel by this on both sides (see `kepler-theme.ts`). */
 const SIDE_PANEL_MARGIN = keplerLightTheme.sidePanel.margin.left;
+const DEMO_GEOGRAPHY_URL = "/data/weather-demo-outline.geojson";
+
+/** Local, coarse Natural Earth context replaces remote tiles only in the opt-in pitch. */
+async function loadDemoGeography(store: ReturnType<typeof makeKeplerStore>) {
+  const response = await fetch(DEMO_GEOGRAPHY_URL);
+  if (!response.ok) throw new Error("Cached demo geography is unavailable");
+  const geojson = await response.json();
+  const dataId = "weather-demo-outline";
+  await runKeplerCommand(store, MAP_ID, "load_data", {
+    dataId, label: "Natural Earth geography (public domain, coarse)", geojson,
+    autoCreateLayers: false, centerMap: false,
+  });
+  const layerId = "weather-demo-outline-layer";
+  // The saved GeoJSON schema examines visConfig before constructing layer defaults.
+  // Supply it in the native action so no intermediate layer has undefined radius settings.
+  store.dispatch(wrapTo(MAP_ID, addLayer({
+    id: layerId, type: "geojson",
+    config: {
+      dataId, label: "Local geographic context · Natural Earth", isVisible: true,
+      columns: { geojson: "_geojson" }, color: [100, 116, 139],
+      visConfig: { filled: true, stroked: true, opacity: 0.12, strokeOpacity: 0.45,
+        strokeColor: [148, 163, 184], thickness: 0.6, allowHover: false,
+        radius: 10, radiusRange: [0, 50], enable3d: false, wireframe: false },
+    },
+    visualChannels: { colorField: null, colorScale: "quantile", strokeColorField: null,
+      strokeColorScale: "quantile", sizeField: null, sizeScale: "linear",
+      heightField: null, heightScale: "linear", radiusField: null, radiusScale: "linear" },
+  })));
+  const state = store.getState().keplerGl as Record<string, {
+    visState: { layerOrder: Parameters<typeof reorderLayer>[0] };
+  }>;
+  // Kepler renders the order in reverse; keep the geographic context beneath all points.
+  const order = state[MAP_ID].visState.layerOrder.filter((entry) => entry !== layerId);
+  store.dispatch(wrapTo(MAP_ID, reorderLayer([...order, layerId])));
+}
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -57,6 +94,14 @@ export default function KeplerMap() {
       store.dispatch(wrapTo(MAP_ID, mapStyleChange(styleType)));
     }
   }, [store, theme]);
+
+  // opt-in pitch mode (NEXT_PUBLIC_WEATHER_DEMO_MODE=1): local Natural Earth outlines instead of remote tiles
+  const demoLoaded = useRef(false);
+  useEffect(() => {
+    if (!WEATHER_DEMO_MODE || demoLoaded.current) return;
+    demoLoaded.current = true;
+    loadDemoGeography(store).catch((err) => console.error("Failed to load the demo geography", err));
+  }, [store]);
 
   return (
     <div ref={containerRef} className="absolute inset-0">

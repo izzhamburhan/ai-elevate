@@ -8,6 +8,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 
 import { gemmaToolCodeMiddleware } from "./gemma-tool-code";
 import { DEFAULT_CHAT_MODEL_ID, findChatModel } from "./models";
+import { configureLocalModel } from "./local-model";
 
 // Server-only: reads API keys from the environment.
 
@@ -118,7 +119,10 @@ export function resolveChatModel(modelId: string | undefined): {
     case "local":
       return {
         id: entry.id,
-        model: local(process.env.LOCAL_LLM_MODEL ?? "gemma4:e4b"),
+        model: configureLocalModel(
+          local(process.env.LOCAL_LLM_MODEL ?? "gemma4:e4b"),
+          process.env.LOCAL_LLM_REASONING_EFFORT,
+        ),
         contextWindow: localContextWindow ?? contextWindow,
       };
   }
