@@ -19,7 +19,7 @@ import uvicorn
 from elevate_hermes import HERMES_VERSION, HERMES_REVISION
 from elevate_hermes.config import AGENTS, DELEGATION, NAMES, Settings
 from elevate_hermes.contracts import InvestigationRequest, DelegationRequest, source_summary, delegation_evidence, unexecuted_tool_claims
-from elevate_hermes import feasibility
+from elevate_hermes import decision, feasibility
 from elevate_hermes.initialize import initialize_profiles
 from elevate_hermes.mcp_access import AGENT_TOOL_ALLOWLISTS
 from elevate_hermes.store import Store, now, source_geojson
@@ -166,13 +166,20 @@ class Runtime:
                     calls = [call for child in current["tasks"] for call in child["tool_calls"]]
                     current.update(summary=task.get("summary"), status=task["status"], error=task.get("error"), geojson=source_geojson(calls))
                     children = [child for child in current["tasks"] if child["task_id"] != task["task_id"]]
-                    if current["agent_id"] in DELEGATION:
+                    # Delegation is required for coordination and discovery; a Decision Time Machine explanation runs alone.
+                    discovered = any(c.get("ok") and c.get("tool") == "opportunity_discover" for c in task.get("tool_calls", []))
+                    if current["agent_id"] == "orchestrator" or (current["agent_id"] == "hypothesis" and discovered):
                         if not children:
                             current.update(status="failed" if current["agent_id"] == "orchestrator" else "partial",
                                            error=f"{NAMES[current['agent_id']]} did not execute an actual specialist. No delegated findings are verified.")
                         elif any(child["status"] != "completed" for child in children) and current["status"] == "completed":
                             current["status"] = "partial"
                     if current["agent_id"] == "hypothesis":
+                        # Simulated numbers and the rule-based recommendation are authoritative; prose only explains them.
+                        current["simulation"] = decision.from_tasks(current["tasks"], task["task_id"])
+                        if current["simulation"]:
+                            for issue in decision.contradictions(task.get("summary") or "", current["simulation"]):
+                                current["warnings"].append(f"Report contradicts the computed simulation ({issue}); the computed recommendation is authoritative.")
                         # Computed from the Engineer's ledger calls; the agent's wording never overrides it.
                         current["feasibility"] = feasibility.from_tasks(current["tasks"], task["task_id"])
                         if current["feasibility"]:

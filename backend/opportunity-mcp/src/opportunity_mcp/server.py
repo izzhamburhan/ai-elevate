@@ -1,7 +1,7 @@
 """opportunity-mcp server. Run: `uv run python -m opportunity_mcp --transport streamable-http --port 8127`.
 
 Tools are always listed explicitly (the --search flag that run_all.py passes is accepted and ignored): there are only
-three, and the Hermes Business Hypothesis Agent allowlists them by name.
+four, and the Hermes Business Hypothesis Agent allowlists them by name.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from datetime import timedelta
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -19,7 +19,7 @@ from pydantic import Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from opportunity_mcp import graph, rank
+from opportunity_mcp import graph, rank, simulate
 
 NAME = "opportunity"
 DEFAULT_PORT = 8127
@@ -27,7 +27,8 @@ INSTRUCTIONS = (
     "Telco Opportunity Graph: connects existing synthetic NetOps sites, busy-hour KPIs, outages, complaints, backhaul, upcoming "
     "events, footfall, booth history, rain and a synthetic SME demand/serviceability seed for 38 Malaysian areas, then ranks "
     "business opportunities for TM with evidence, network feasibility, an assumption-labelled indicative potential, confidence and "
-    "risks. Read-only. ALL DATA IS SYNTHETIC; scores are correlations, potential is not verified revenue."
+    "risks, and simulates investment strategies for a chosen opportunity (Decision Time Machine). Read-only. ALL DATA IS "
+    "SYNTHETIC; scores are correlations, potential and simulated returns are assumption-based, not verified revenue."
 )
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
@@ -84,6 +85,31 @@ def build_server() -> FastMCP:
     @mcp.tool(annotations=READ_ONLY, description="Summarise the opportunity graph: node and edge counts by type and data provenance.")
     def opportunity_graph_summary() -> dict[str, Any]:
         return _envelope({"summary": "Opportunity graph structure.", "graph": _graph().summary()}, "opportunity_graph_summary")
+
+    @mcp.tool(annotations=READ_ONLY, description=(
+        "Business Decision Time Machine: simulate three intervention strategies (targeted sales campaign, fix network then sell, "
+        "phased pilot) for one discovered opportunity. Seeded Monte Carlo over 24 months with stated synthetic assumptions: spend, "
+        "customers, p10/p50/p90 contribution, loss probability, payback and a rule-based recommendation. Deterministic for the "
+        "same inputs. opportunity_id from opportunity_discover (e.g. OPP-SME-FIBRE-JOHORB). Omit capacity_headroom_pct and "
+        "network_risk to use the graph defaults."))
+    def opportunity_simulate(
+        opportunity_id: Annotated[str, Field(min_length=4, max_length=64)],
+        budget_rm: Annotated[float, Field(ge=5_000, le=200_000, description="Investment budget in RM")] = 20_000,
+        demand_multiplier: Annotated[float, Field(ge=0.5, le=1.5, description="Demand assumption relative to the Order 4 base")] = 1.0,
+        capacity_headroom_pct: Annotated[float | None, Field(ge=0, le=80, description="Spare busy-hour network capacity, %")] = None,
+        network_risk: Literal["low", "medium", "high"] | None = None,
+    ) -> dict[str, Any]:
+        discovery = rank.discover(_graph(), 3)
+        opportunity = next((o for o in discovery["opportunities"] if o["opportunity_id"] == opportunity_id), None)
+        if opportunity is None:
+            ids = ", ".join(o["opportunity_id"] for o in discovery["opportunities"])
+            raise ToolError(f"Unknown opportunity '{opportunity_id}'. Use one of: {ids}.")
+        result = simulate.simulate(opportunity, budget_rm, demand_multiplier, capacity_headroom_pct, network_risk)
+        features = [f for f in discovery["geojson"]["features"]
+                    if f["properties"].get("id") == opportunity_id or f["properties"].get("opportunity_id") == opportunity_id]
+        envelope = _envelope({**result, "geojson": {"type": "FeatureCollection", "features": features}}, "opportunity_simulate")
+        envelope["data"]["limitations"] = simulate.LIMITATIONS + rank.LIMITATIONS
+        return envelope
 
     return mcp
 

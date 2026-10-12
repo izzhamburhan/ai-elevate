@@ -62,7 +62,7 @@ BUSINESS_GEOGRAPHIC_TOOLS = frozenset(
 )
 
 # Order 4 Telco Opportunity Graph (backend/opportunity-mcp): read-only synthetic opportunity ranking.
-OPPORTUNITY_TOOLS = frozenset({"opportunity_discover", "opportunity_explain", "opportunity_graph_summary"})
+OPPORTUNITY_TOOLS = frozenset({"opportunity_discover", "opportunity_explain", "opportunity_graph_summary", "opportunity_simulate"})
 
 AGENT_TOOL_ALLOWLISTS: dict[str, dict[str, frozenset[str]]] = {
     "orchestrator": {},  # Its delegation tools are registered by the coordinator.

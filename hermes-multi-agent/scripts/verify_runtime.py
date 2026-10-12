@@ -23,6 +23,7 @@ from urllib.request import Request, urlopen
 
 AGENTS = {"orchestrator", "forecast", "business", "engineer", "hypothesis"}
 OPPORTUNITY_TOOLS = {"opportunity_discover", "opportunity_explain"}
+SIMULATE_TOOLS = {"opportunity_simulate"}
 TERMINAL = {"completed", "partial", "failed"}
 FORECAST_TOOLS = {
     "predict_rainfall", "predict_temperature", "predict_weather_for_sites", "get_weather_forecast_geojson",
@@ -34,6 +35,9 @@ BUSINESS_TOOLS = {
 }
 # The Order 2 demonstration request, verbatim.
 DEMO_PROMPT = "Investigate telecom sites in Selangor that may be exposed to heavy rainfall."
+# Order 6: the Decision Time Machine "Explain with AI" request for the pitch scenario.
+EXPLAIN_PROMPT = ("Decision Time Machine: explain the trade-offs and recommend a strategy for opportunity_id=OPP-SME-FIBRE-JOHORB with "
+                  "budget_rm=50000, demand_multiplier=1.0, network_risk=medium. Call opportunity_simulate once with exactly these inputs.")
 # Order 4: the frontend "Discover opportunities" action sends this request to the Business Hypothesis agent.
 DISCOVER_PROMPT = ("Discover the top three TM business opportunities from the Telco Opportunity Graph, form a testable hypothesis "
                    "for each, have the Engineer validate network feasibility for their supporting sites, and report where, why and what TM should do.")
@@ -167,7 +171,9 @@ def validate_job(job: Any, expected_agent: str) -> dict[str, Any]:
             require(isinstance(runtime, dict) and runtime.get("name") == "hermes-agent", "Completed task lacks native Hermes execution metadata")
             require(runtime.get("profile") == task["agent_id"] and runtime.get("soul_loaded") is True, "Completed task lacks isolated profile identity/SOUL")
             require(isinstance(runtime.get("revision"), str) and bool(runtime["revision"]) and isinstance(runtime.get("version"), str), "Completed task lacks pinned Hermes runtime provenance")
-    agents_required = {"forecast", "engineer"} if expected_agent == "orchestrator" else {"hypothesis", "engineer"} if expected_agent == "hypothesis" else {expected_agent}
+    explain = expected_agent == "hypothesis" and any(c.get("tool") == "opportunity_simulate" for t in tasks for c in t.get("tool_calls", []))
+    agents_required = ({"forecast", "engineer"} if expected_agent == "orchestrator" else {"hypothesis"} if explain
+                       else {"hypothesis", "engineer"} if expected_agent == "hypothesis" else {expected_agent})
     evidence = {}
     for agent in agents_required:
         completed = [task for task in by_agent.get(agent, []) if task.get("status") == "completed"]
@@ -179,20 +185,26 @@ def validate_job(job: Any, expected_agent: str) -> dict[str, Any]:
         elif agent == "engineer":
             evidence[agent] = validate_evidence(relevant, NETWORK_KPI_TOOLS, "netops")
         elif agent == "hypothesis":
-            evidence[agent] = validate_evidence(relevant, OPPORTUNITY_TOOLS, "opportunity")
+            evidence[agent] = validate_evidence(relevant, SIMULATE_TOOLS if explain else OPPORTUNITY_TOOLS, "opportunity")
         elif agent == "business":
             evidence[agent] = validate_evidence(relevant, BUSINESS_TOOLS, "netops")
     points = validate_geojson(job.get("geojson"))
+    simulation = None
+    if explain:
+        simulation = job.get("simulation")
+        require(isinstance(simulation, dict) and simulation.get("recommendation", {}).get("computed") is True and len(simulation.get("strategies", [])) == 3,
+                "Explanation lacks the computed simulation")
+        simulation = {"recommendation": simulation["recommendation"]["name"], "inputs": simulation["inputs"]}
     feasibility = None
-    if expected_agent == "hypothesis":
+    if expected_agent == "hypothesis" and not explain:
         feasibility = job.get("feasibility")
         require(isinstance(feasibility, list) and feasibility and all(v.get("label") in {"supported", "supported with risk", "blocked until repaired", "not validated"} for v in feasibility),
                 "Discovery lacks computed feasibility verdicts")
         feasibility = {v["opportunity_id"]: v["label"] for v in feasibility}
-    contradicted = [warning for warning in job.get("warnings", []) if warning.startswith("Report contradicts computed feasibility")]
+    contradicted = [warning for warning in job.get("warnings", []) if warning.startswith("Report contradicts")]
     ungrounded = [warning for task in tasks for warning in task.get("warnings", []) if warning.startswith("Report names tools this task did not execute")]
     return {"investigation_id": job["investigation_id"], "agent_id": expected_agent, "status": job["status"], "task_agents": sorted(by_agent), "successful_tools": evidence, "map_points": points,
-            "ungrounded_tool_claims": ungrounded, "feasibility": feasibility, "feasibility_contradictions": contradicted,
+            "ungrounded_tool_claims": ungrounded, "feasibility": feasibility, "simulation": simulation, "contradictions": contradicted,
             "hermes_profiles": {task["agent_id"]: task.get("runtime") for task in tasks if task.get("status") == "completed"}}
 
 
@@ -227,6 +239,7 @@ def main() -> int:
     parser.add_argument("--agents-smoke", default="", help="Optional comma-separated forecast,business,engineer direct-profile smoke checks")
     parser.add_argument("--prompt", default=DEMO_PROMPT, help="Orchestrator investigation request for the consecutive runs")
     parser.add_argument("--discover", type=int, default=0, help="Consecutive real opportunity discoveries (Business Hypothesis + Engineer)")
+    parser.add_argument("--explain", type=int, default=0, help="Consecutive real Decision Time Machine explanations (Business Hypothesis)")
     parser.add_argument("--report", type=Path, help="Write actual full evidence and qualification summary as JSON")
     args = parser.parse_args()
     report: dict[str, Any] = {"qualification": "NOT VERIFIED", "actual_execution": True, "investigations": []}
@@ -262,6 +275,12 @@ def main() -> int:
             summary["duration_seconds"] = round(time.monotonic() - before, 3)
             report["investigations"].append({"summary": summary, "actual_job": job})
             print(json.dumps({"discovery": index + 1, "qualification": "PASS", **summary}), flush=True)
+        for index in range(args.explain):
+            before = time.monotonic()
+            job, summary = run_investigation(api, frontend, "hypothesis", EXPLAIN_PROMPT, args.timeout)
+            summary["duration_seconds"] = round(time.monotonic() - before, 3)
+            report["investigations"].append({"summary": summary, "actual_job": job})
+            print(json.dumps({"explanation": index + 1, "qualification": "PASS", **summary}), flush=True)
         for agent in smoke:
             job, summary = run_investigation(api, frontend, agent, SMOKE_PROMPTS[agent], args.timeout)
             report["investigations"].append({"summary": summary, "actual_job": job})
