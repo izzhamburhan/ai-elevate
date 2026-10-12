@@ -14,6 +14,7 @@ import {
   DISCOVER_PROMPT, discoveryFromJob, discoverySchema, validationState, type Discovery,
 } from "@/lib/opportunities/contracts";
 import { loadOpportunityOverlay } from "@/lib/opportunities/map-overlay";
+import { CommercialApplications } from "./commercial-applications";
 import { DecisionTimeMachine } from "./decision-time-machine";
 import { OpportunityCards } from "./opportunity-cards";
 import type { makeKeplerStore } from "../kepler-store";
@@ -52,6 +53,7 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
   const { agentId, prompt, job, investigationId, sessions, discovery, discoveryRunId, discoveryJob } = useHermesSelection();
   const [discovering, setDiscovering] = useState(false);
   const [timeMachineOpen, setTimeMachineOpen] = useState(false);
+  const [commercialOpen, setCommercialOpen] = useState(false);
   const [storedRun] = useState(readLastRun);
   const validation = discovery ? validationState(discoveryJob, discoveryRunId, discovery) : null;
   const validatedId = validation?.state === "validated" ? validation.investigationId : null;
@@ -197,7 +199,12 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
         <Button type="button" size="sm" variant="outline" onClick={() => setTimeMachineOpen((open) => !open)} className="mt-1 w-full">
           {timeMachineOpen ? "Close" : "Open"} Decision Time Machine
         </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setCommercialOpen((open) => !open)} className="mt-1 w-full">
+          {commercialOpen ? "Close" : "Open"} commercial applications
+        </Button>
       </div>
+      {commercialOpen ? <CommercialApplications store={store} disabled={checking || active || !agents?.agents.find((a) => a.agent_id === "hypothesis")?.available}
+        onExplain={explainScenario} /> : null}
       {timeMachineOpen ? <DecisionTimeMachine store={store} disabled={checking || active || !agents?.agents.find((a) => a.agent_id === "hypothesis")?.available}
         verdicts={validation?.state === "validated" ? Object.fromEntries(validation.verdicts.map((v) => [v.opportunity_id, v.label])) : undefined}
         onExplain={explainScenario} /> : null}

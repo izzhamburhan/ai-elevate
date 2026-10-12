@@ -8,6 +8,9 @@ export type Envelope = { synthetic?: boolean; as_of?: string; data?: unknown; ev
 /** A tool or server problem worth showing as is (not retried). */
 export class MenaraCallError extends Error {}
 
+/** The cached tool list lacks the tool; the server may have been restarted with new tools, so reconnect once. */
+class MissingToolError extends MenaraCallError {}
+
 /** NetOps MCP (the boss's server), same variable the connector catalog uses. */
 export const NETOPS_URL = process.env.NEXT_PUBLIC_NETOPS_MCP_URL ?? "http://127.0.0.1:8000/mcp";
 
@@ -47,7 +50,7 @@ async function callOnce(url: string, label: string, tool: string, args: Record<s
   const direct = tools[tool];
   const proxy = direct ? undefined : Object.entries(tools).find(([name]) => name.endsWith("_call_tool"))?.[1];
   const found = direct ?? proxy;
-  if (!found?.execute) throw new MenaraCallError(`${label} MCP has no tool "${tool}".`);
+  if (!found?.execute) throw new MissingToolError(`${label} MCP has no tool "${tool}".`);
   const input = direct ? args : { name: tool, arguments: args };
   const result = (await found.execute(input, { toolCallId: crypto.randomUUID(), messages: [], context: {} })) as {
     content?: { type: string; text?: string }[];
@@ -69,7 +72,7 @@ export async function callMcp(url: string, label: string, tool: string, args: Re
   try {
     return await callOnce(url, label, tool, args);
   } catch (error) {
-    if (error instanceof MenaraCallError) throw error;
+    if (error instanceof MenaraCallError && !(error instanceof MissingToolError)) throw error;
     // a transport problem (a restarted server, an expired session): reconnect and try once more
     await drop(url);
     return callOnce(url, label, tool, args);

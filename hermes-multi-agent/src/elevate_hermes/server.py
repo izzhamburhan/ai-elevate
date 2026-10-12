@@ -19,7 +19,7 @@ import uvicorn
 from elevate_hermes import HERMES_VERSION, HERMES_REVISION
 from elevate_hermes.config import AGENTS, DELEGATION, NAMES, Settings
 from elevate_hermes.contracts import InvestigationRequest, DelegationRequest, source_summary, delegation_evidence, unexecuted_tool_claims
-from elevate_hermes import decision, feasibility
+from elevate_hermes import commercial, decision, feasibility
 from elevate_hermes.initialize import initialize_profiles
 from elevate_hermes.mcp_access import AGENT_TOOL_ALLOWLISTS
 from elevate_hermes.store import Store, now, source_geojson
@@ -175,6 +175,13 @@ class Runtime:
                         elif any(child["status"] != "completed" for child in children) and current["status"] == "completed":
                             current["status"] = "partial"
                     if current["agent_id"] == "hypothesis":
+                        # Order 7: commercial results are authoritative; any RM figure the report adds is flagged.
+                        computed = commercial.from_tasks(current["tasks"], task["task_id"])
+                        if computed:
+                            current["commercial"] = {k: computed[k] for k in ("tool", "application", "headline")}
+                            unverified = commercial.unverified_figures(task.get("summary") or "", computed["data"])
+                            if unverified:
+                                current["warnings"].append("Report states RM figures not found in the computed result: " + ", ".join(unverified) + ". The computed result is authoritative.")
                         # Simulated numbers and the rule-based recommendation are authoritative; prose only explains them.
                         current["simulation"] = decision.from_tasks(current["tasks"], task["task_id"])
                         if current["simulation"]:
