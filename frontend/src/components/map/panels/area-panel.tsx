@@ -92,15 +92,19 @@ function circleBounds(lat: number, lng: number, km: number): [number, number, nu
   return [lng - dLng, lat - dLat, lng + dLng, lat + dLat];
 }
 
-/** A circle as a GeoJSON polygon (65 points), for the area outline on the map. */
-function circleGeoJson(lat: number, lng: number, km: number) {
+/** A circle as 64 line segments (lat0/lng0 to lat1/lng1), for the area outline on the map. */
+function circleSegments(lat: number, lng: number, km: number) {
   const dLat = km / 111;
   const dLng = km / (111 * Math.cos((lat * Math.PI) / 180));
-  const ring = Array.from({ length: 65 }, (_, i) => {
+  const point = (i: number) => {
     const angle = (i / 64) * 2 * Math.PI;
-    return [lng + dLng * Math.sin(angle), lat + dLat * Math.cos(angle)];
+    return { lat: lat + dLat * Math.cos(angle), lng: lng + dLng * Math.sin(angle) };
+  };
+  return Array.from({ length: 64 }, (_, i) => {
+    const from = point(i);
+    const to = point(i + 1);
+    return { lat0: from.lat, lng0: from.lng, lat1: to.lat, lng1: to.lng };
   });
-  return { type: "FeatureCollection", features: [{ type: "Feature", properties: { name: "Area" }, geometry: { type: "Polygon", coordinates: [ring] } }] };
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
@@ -139,7 +143,7 @@ export function AreaPanel({ initial, embedded = false }: { initial?: { lat: numb
 
   const drawCircle = async (la: number, ln: number) => {
     await runKeplerCommand(store, MAP_ID, "load_data", {
-      geojson: circleGeoJson(la, ln, radius),
+      rows: circleSegments(la, ln, radius),
       label: "Area",
       dataId: "area_circle",
       centerMap: false,
@@ -147,12 +151,12 @@ export function AreaPanel({ initial, embedded = false }: { initial?: { lat: numb
     });
     await runKeplerCommand(store, MAP_ID, "add_layer", {
       dataId: "area_circle",
-      type: "geojson",
+      type: "line",
       label: `Area ${radius} km`,
-      columns: { geojson: "_geojson" },
+      columns: { lat0: "lat0", lng0: "lng0", lat1: "lat1", lng1: "lng1" },
       color: "#7c5cff",
-      opacity: 0.18,
-      visConfig: { filled: true, stroked: true, strokeOpacity: 0.9, thickness: 2 },
+      opacity: 0.9,
+      visConfig: { thickness: 3 },
     });
   };
 
@@ -207,6 +211,7 @@ export function AreaPanel({ initial, embedded = false }: { initial?: { lat: numb
         busiestHour: appsData.busiest_hour ?? null,
       });
     } catch (e) {
+      console.error("[area] search failed", e instanceof Error ? e.stack : e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
