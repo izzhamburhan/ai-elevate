@@ -15,6 +15,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { TowerLinks, useInlineTowerCode } from "@/components/chat/tower-links";
 import { cn } from "@/lib/utils";
 
 type MarkdownTextProps = Partial<TextMessagePartProps> & {
@@ -138,14 +139,16 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  p: ({ className, ...props }) => (
+  p: ({ className, children, ...props }) => (
     <p
       className={cn(
         "aui-md-p my-3 leading-relaxed first:mt-0 last:mb-0",
         className,
       )}
       {...props}
-    />
+    >
+      <TowerLinks>{children}</TowerLinks>
+    </p>
   ),
   a: ({ className, ...props }) => (
     <a
@@ -209,14 +212,16 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  td: ({ className, ...props }) => (
+  td: ({ className, children, ...props }) => (
     <td
       className={cn(
         "aui-md-td border-muted-foreground/20 border-s border-b px-3 py-1.5 text-start last:border-e [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}
-    />
+    >
+      <TowerLinks>{children}</TowerLinks>
+    </td>
   ),
   tr: ({ className, ...props }) => (
     <tr
@@ -227,14 +232,18 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  li: ({ className, ...props }) => (
-    <li className={cn("aui-md-li leading-relaxed", className)} {...props} />
+  li: ({ className, children, ...props }) => (
+    <li className={cn("aui-md-li leading-relaxed", className)} {...props}>
+      <TowerLinks>{children}</TowerLinks>
+    </li>
   ),
-  strong: ({ className, ...props }) => (
+  strong: ({ className, children, ...props }) => (
     <strong
       className={cn("aui-md-strong font-semibold", className)}
       {...props}
-    />
+    >
+      <TowerLinks>{children}</TowerLinks>
+    </strong>
   ),
   sup: ({ className, ...props }) => (
     <sup
@@ -253,6 +262,8 @@ const defaultComponents = memoizeMarkdownComponents({
   ),
   code: function Code({ className, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
+    const towerLink = useInlineTowerCode(isCodeBlock ? undefined : props.children);
+    if (towerLink) return towerLink;
     return (
       <code
         className={cn(

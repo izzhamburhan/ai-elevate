@@ -17,6 +17,8 @@ import {
   ReasoningTrigger,
 } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
+import { InvestigationProgress } from "@/components/chat/investigation-progress";
+import { isCardTool } from "@/components/chat/tool-ui";
 import {
   ToolGroupContent,
   ToolGroupRoot,
@@ -105,11 +107,15 @@ export type ThreadComponents = {
   ComposerTrailing?: ComponentType | undefined;
 };
 
-const messageGroupBy = groupPartByType({
+const groupByType = groupPartByType({
   reasoning: ["group-chainOfThought", "group-reasoning"],
   "tool-call": ["group-chainOfThought", "group-tool"],
   "standalone-tool-call": [],
 });
+
+// Tools shown as a card (alarms, approvals) stay in the message instead of the collapsed tool group.
+const messageGroupBy: typeof groupByType = (part, context) =>
+  part.type === "tool-call" && isCardTool(part.toolName) ? [] : groupByType(part, context);
 
 type ThreadGroupKey =
   | "group-chainOfThought"
@@ -649,6 +655,7 @@ const AssistantMessage: FC = () => {
         data-slot="aui_assistant-message-content"
         className="text-foreground px-2 leading-relaxed wrap-break-word"
       >
+        <InvestigationProgress />
         <MessagePrimitive.GroupedParts groupBy={groupBy}>
           {({ part, children }) => {
             switch (part.type) {

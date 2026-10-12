@@ -1,16 +1,28 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState } from "react";
-import { AssistantRuntimeProvider, useRemoteThreadListRuntime } from "@assistant-ui/react";
+import {
+  AssistantRuntimeProvider,
+  AuiProvider,
+  Suggestions,
+  useAui,
+  useRemoteThreadListRuntime,
+} from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/ai-sdk";
 
 import { ModelSelector } from "@/components/assistant-ui/elements/model-selector.aui";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { chatThreadListAdapter } from "@/components/chat/chat-history";
 import { ContextMeter } from "@/components/chat/context-meter";
+import { SituationBoard } from "@/components/chat/situation-board";
+import { SelectionCard } from "@/components/chat/tower-card";
+import { ChatToolCall } from "@/components/chat/tool-ui";
 import { ConnectorsMenu } from "@/components/connectors/connectors-menu";
 import { enabledConnectorRequests } from "@/components/connectors/connectors-store";
+import { useAnswerOnMap } from "@/components/map/use-answer-on-map";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
+import { followupAdapter, setSuggestionModel } from "@/lib/ai/followups";
+import { STARTER_PROMPTS } from "@/lib/ai/starter-prompts";
 
 /**
  * Chat endpoint. Defaults to the Next.js agent route; point it at another backend
@@ -35,7 +47,7 @@ function useChatThreadRuntime() {
         body: () => ({ mcpServers: enabledConnectorRequests() }),
       }),
   );
-  return useChatRuntime({ transport });
+  return useChatRuntime({ transport, adapters: { suggestion: followupAdapter } });
 }
 
 /**
@@ -49,6 +61,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   });
   const [modelId, setModelId] = useState(DEFAULT_CHAT_MODEL_ID);
   const model = useMemo(() => ({ modelId, setModelId }), [modelId]);
+  setSuggestionModel(modelId);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -79,10 +92,13 @@ function ChatModelPicker() {
 
 function AssistantWelcome() {
   return (
-    <p className="mb-4 px-2 text-[13px] leading-5 text-muted-foreground">
-      Describe what you&apos;d like to map — e.g. “Show the 10 most populated cities as a
-      heatmap”.
-    </p>
+    <div className="mb-3 px-2">
+      <p className="text-lg font-medium tracking-tight">Network operations</p>
+      <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+        Start from a hotspot below, or ask anything. Answers show on the map.
+      </p>
+      <SituationBoard />
+    </div>
   );
 }
 
@@ -102,19 +118,32 @@ function ChatContextMeter() {
 
 const threadComponents = {
   Welcome: AssistantWelcome,
+  ToolFallback: ChatToolCall,
   ComposerActions,
   ComposerTrailing: ChatContextMeter,
 };
 
+/** Renders nothing; keeps the map in step with the conversation. */
+function AnswerOnMap() {
+  useAnswerOnMap();
+  return null;
+}
+
 /** Chat panel rendered as a tab inside kepler.gl's side panel. */
 export function AssistantPanel() {
+  const aui = useAui({ suggestions: Suggestions(STARTER_PROMPTS) });
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 font-sans text-foreground">
-      <h2 className="truncate text-base font-bold tracking-tight">What will you map?</h2>
+      <h2 className="truncate text-base font-bold tracking-tight">Assistant</h2>
 
-      <div className="-mx-4 min-h-0 flex-1">
-        <Thread components={threadComponents} />
-      </div>
+      <AuiProvider value={aui}>
+        <AnswerOnMap />
+        <SelectionCard />
+        <div className="-mx-4 min-h-0 flex-1">
+          <Thread components={threadComponents} />
+        </div>
+      </AuiProvider>
     </div>
   );
 }
