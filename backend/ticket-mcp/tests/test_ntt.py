@@ -228,3 +228,51 @@ def test_mcmc_eligibility_and_auto_send_on_resolve(
     assert detail.data.mcmc_closure_sent is True
     assert detail.data.mcmc_comprehensive_required is True
     assert any("Simulated MCMC closure" in n.text and "nothing was sent" in n.text for n in detail.data.notes)
+
+
+def test_mcmc_counts_the_outage_from_when_the_fault_began(
+    conn: sqlite3.Connection, set_clock: Callable[[int], None]
+) -> None:
+    from ticket_mcp.tools import check_mcmc
+
+    set_clock(0)
+    ntt = create_ntt(
+        conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure since 03:00", fault_began_at="2026-11-14T03:00:00+08:00"
+    ).data
+    assert ntt.fault_began_at == "2026-11-14T03:00:00+08:00"
+    set_clock(30)  # a quick fix: 30 min on the NTT, but the tower has been down for 270
+    mcmc = check_mcmc(conn, ntt.ntt_id).data
+    assert mcmc.outage_duration_min == 270 and mcmc.can_send is True
+    assert mcmc.outage_started_at == "2026-11-14T03:00:00+08:00"
+
+
+def test_without_fault_began_the_outage_counts_from_the_ntt(
+    conn: sqlite3.Connection, set_clock: Callable[[int], None]
+) -> None:
+    from ticket_mcp.tools import check_mcmc
+
+    set_clock(0)
+    ntt = create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure").data
+    assert ntt.fault_began_at is None
+    set_clock(30)
+    mcmc = check_mcmc(conn, ntt.ntt_id).data
+    assert mcmc.outage_duration_min == 30 and mcmc.can_send is False
+    assert mcmc.outage_started_at == ntt.created_at
+
+
+def test_fault_began_must_not_be_in_the_future(conn: sqlite3.Connection, set_clock: Callable[[int], None]) -> None:
+    set_clock(0)
+    with pytest.raises(InvalidInputError, match="fault_began_at"):
+        create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure", fault_began_at="2026-11-14T08:00:00+08:00")
+    with pytest.raises(InvalidInputError, match="ISO"):
+        create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure", fault_began_at="this morning")
+
+
+def test_a_reused_ntt_keeps_the_earliest_fault_time(conn: sqlite3.Connection, set_clock: Callable[[int], None]) -> None:
+    set_clock(0)
+    first = create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure", fault_began_at="2026-11-14T05:00:00+08:00")
+    later = create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure", fault_began_at="2026-11-14T06:00:00+08:00")
+    earlier = create_ntt(conn, "KKRI-0142", "POWER", "CRITICAL", "Mains failure", fault_began_at="2026-11-14T03:00:00+08:00")
+    assert first.data.ntt_id == later.data.ntt_id == earlier.data.ntt_id
+    assert later.data.fault_began_at == "2026-11-14T05:00:00+08:00"
+    assert earlier.data.fault_began_at == "2026-11-14T03:00:00+08:00"

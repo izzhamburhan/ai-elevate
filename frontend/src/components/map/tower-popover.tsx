@@ -70,7 +70,7 @@ function useShowChat() {
 
 /**
  * Actions under a tower's map tooltip. Hovering shows a hint; clicking the tower pins the tooltip
- * and offers "Heal this tower" (DOWN or DEGRADED towers: asks the chat, which starts the self-heal
+ * and offers "Start self-heal" (DOWN or DEGRADED towers: asks the chat, which starts the self-heal
  * card) and "Add to chat" (the tower's live status, alarms, KPI and neighbours go in the composer
  * as a chip, sent with the next message).
  */
@@ -114,7 +114,7 @@ function TowerActions({ tower }: { tower: TowerRow }) {
     <div className="flex flex-wrap gap-2 border-t pt-2.5 [&>*+*]:!mt-0">
       {healable ? (
         <Button size="sm" variant="brand" onClick={heal} disabled={running} title={running ? "Wait for the current answer to finish" : undefined}>
-          <Wrench /> Heal this tower
+          <Wrench /> Start self-heal
         </Button>
       ) : null}
       <Button size="sm" variant="outline" onClick={addToChat} disabled={adding || attached}>

@@ -31,6 +31,9 @@ class OpportunityGraph:
     graph: nx.Graph
     data_end_utc: datetime
     provenance: dict[str, Any]
+    # the databases this graph was built from, so derived queries read the same data
+    intel_db: Path = INTEL_DB
+    ml_db: Path = ML_DB
 
     def nodes(self, kind: str) -> list[str]:
         return sorted(node for node, attrs in self.graph.nodes(data=True) if attrs["kind"] == kind)
@@ -137,4 +140,4 @@ def build(intel_db: Path = INTEL_DB, ml_db: Path = ML_DB, sme_csv: Path = SME_CS
                   "netops_ref_date": meta["netops_ref_date"], "sme_generator": next(iter(sme_rows.values()))["generator"],
                   "kpi_window_days": KPI_DAYS, "incident_window_days": INCIDENT_DAYS, "event_horizon_days": EVENT_HORIZON_DAYS,
                   "synthetic": True}
-    return OpportunityGraph(graph=graph, data_end_utc=end, provenance=provenance)
+    return OpportunityGraph(graph=graph, data_end_utc=end, provenance=provenance, intel_db=intel_db, ml_db=ml_db)

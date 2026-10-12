@@ -24,6 +24,8 @@ import { loadOpportunityOverlay } from "@/lib/opportunities/map-overlay";
 import { cn } from "@/lib/utils";
 import { useActiveDrawnFeature } from "../drawn-boundary-actions";
 import { AGENT_META, AgentRoster, AreaContextCard, InvestigationResults, Kind, ProgressTimeline } from "./agents-workspace";
+import { CommercialApplications } from "./commercial-applications";
+import { DecisionTimeMachine } from "./decision-time-machine";
 import { OpportunityCards } from "./opportunity-cards";
 import type { makeKeplerStore } from "../kepler-store";
 
@@ -68,6 +70,8 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
   const store = useStore() as ReturnType<typeof makeKeplerStore>;
   const { agentId, prompt, job, investigationId, sessions, discovery, discoveryRunId, discoveryJob, attachArea, areaSource, areaCleared } = useHermesSelection();
   const [discovering, setDiscovering] = useState(false);
+  const [timeMachineOpen, setTimeMachineOpen] = useState(false);
+  const [commercialOpen, setCommercialOpen] = useState(false);
   const [storedRun] = useState(readLastRun);
   const [recent, setRecent] = useState<Recent[]>(readRecent);
   const validation = discovery ? validationState(discoveryJob, discoveryRunId, discovery) : null;
@@ -219,6 +223,17 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
 
   useEffect(() => { if (validatedId) saveLastRun(validatedId); }, [validatedId]);
 
+  /** Order 6: the agent explains the exact simulated scenario; its computed numbers stay authoritative. */
+  async function explainScenario(explainRequest: string) {
+    setError(null);
+    try {
+      const response = hermesSubmissionSchema.parse(await requestHermes(new URLSearchParams(), undefined, {
+        agent_id: "hypothesis", prompt: explainRequest, ...(sessions.hypothesis ? { session_id: sessions.hypothesis } : {}),
+      }));
+      useHermesSelection.setState({ investigationId: response.investigation_id, job: null, agentId: "hypothesis", prompt: explainRequest });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "The explanation could not start."); }
+  }
+
   async function showFindings() {
     if (!job) return;
     setMapping(true); setError(null);
@@ -279,7 +294,18 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
         {lastRun ? <Button type="button" size="sm" variant="ghost" onClick={() => void showLastRun()} disabled={discovering || active} className="mt-1 w-full">
           Show last validated run ({lastRun.slice(0, 8)})
         </Button> : null}
+        <Button type="button" size="sm" variant="outline" onClick={() => setTimeMachineOpen((open) => !open)} className="mt-1 w-full">
+          {timeMachineOpen ? "Close" : "Open"} Decision Time Machine
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setCommercialOpen((open) => !open)} className="mt-1 w-full">
+          {commercialOpen ? "Close" : "Open"} commercial applications
+        </Button>
       </div>
+      {commercialOpen ? <CommercialApplications store={store} disabled={checking || active || !agents?.agents.find((a) => a.agent_id === "hypothesis")?.available}
+        onExplain={explainScenario} /> : null}
+      {timeMachineOpen ? <DecisionTimeMachine store={store} disabled={checking || active || !agents?.agents.find((a) => a.agent_id === "hypothesis")?.available}
+        verdicts={validation?.state === "validated" ? Object.fromEntries(validation.verdicts.map((v) => [v.opportunity_id, v.label])) : undefined}
+        onExplain={explainScenario} /> : null}
       {discovery && validation ? <OpportunityCards discovery={discovery} validation={validation} /> : null}
 
       <form onSubmit={submitInvestigation} className="flex flex-col gap-2.5 rounded-lg border bg-card/40 p-3">

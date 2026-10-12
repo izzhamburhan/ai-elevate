@@ -3,7 +3,9 @@
 The seeded `tower_state` and `tower_alarm` are the history the world was given. Two sandboxed actions repair a tower:
 a field job that has finished (field-mcp's `field_job`: EN_ROUTE until its ETA, then FIELD_WORK_MIN on site) and a
 soft reset of a hung cell (ran-mcp's `ran_reset_cell` change), which only clears a CELL_HUNG fault. A repair counts
-when it happened during the tower's current fault. Nothing here writes; the owners keep their tables.
+when it happened during the tower's current fault. The seeded KPIs only know the outage (no traffic), so a dead sample
+taken after the repair reads as the tower's normal traffic (`restored_kpi`, applied by `kpi_overlay.adjust`).
+Nothing here writes; the owners keep their tables.
 All data is synthetic.
 """
 
@@ -13,6 +15,7 @@ import sqlite3
 
 FIELD_WORK_MIN = 90  # how long a crew works on site before the job is done
 RESETTABLE = frozenset({"CELL_HUNG"})  # faults a soft reset clears
+DAY_MIN = 24 * 60
 
 
 def _fault_start(conn: sqlite3.Connection, name: str, now: int) -> int | None:
@@ -73,3 +76,18 @@ def alarm_cleared_min(conn: sqlite3.Connection, name: str, now: int, raised_min:
     """When a repair cleared an alarm that the seed leaves open, or None."""
     fixed = repaired_min(conn, name, now)
     return fixed if fixed is not None and raised_min <= fixed else None
+
+
+def restored_kpi(
+    conn: sqlite3.Connection, name: str, t_min: int, prb: float, drop: float, thr: float
+) -> tuple[float, float, float]:
+    """A sample with no traffic, taken once the tower was repaired, reads as its live sample nearest the same time a
+    day earlier (so the daily load curve holds). Any other sample is returned as is."""
+    if prb > 0 or thr > 0 or repaired_min(conn, name, t_min) is None:
+        return prb, drop, thr
+    row = conn.execute(
+        "SELECT prb_util, drop_rate, throughput_mbps FROM tower_kpi "
+        "WHERE enodeb_name = ? AND t_min < ? AND (prb_util > 0 OR throughput_mbps > 0) ORDER BY ABS(t_min - ?) LIMIT 1",
+        (name, t_min, t_min - DAY_MIN),
+    ).fetchone()
+    return (row["prb_util"], row["drop_rate"], row["throughput_mbps"]) if row else (prb, drop, thr)

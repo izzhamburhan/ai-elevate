@@ -114,7 +114,7 @@ The frontend reaches the existing services:
 
 | Check | Result |
 |---|---|
-| `npm run test:hermes` (13 new workspace tests) | PASS: 19 |
+| `npm run test:hermes` (9 new workspace tests; Order 4, 6 and 7 tests included) | PASS: 25 |
 | `npm run test:weather`; `boundary-context.test.mjs` | PASS: 8; PASS: 2 |
 | `npm run lint`, `npx tsc --noEmit`, `npm run build` | PASS (0 lint problems, 0 type errors) |
 | Real Hermes run with an area attached: Engineer, `c462515a826b451dbd95e9b68a5db2e9`, drawn rectangle over Shah Alam (12 NetOps sites) | **completed**. 2 successful MCP calls: `get_ran_kpi` on exactly the 12 Site_IDs, and `get_ntt_tickets` within 3 km of a point inside the area. Area scope: **respected**. |

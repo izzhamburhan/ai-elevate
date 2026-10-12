@@ -10,6 +10,11 @@ export const TOWER_STATUS_COLOR = {
   UNKNOWN: "#8a93a8",
 } as const;
 
+/** How a tower status reads on screen: the data keeps the tools' `DOWN`, people see `OUTAGE`. */
+export function towerStatusLabel(status: string): string {
+  return status === "DOWN" ? "OUTAGE" : status;
+}
+
 /** `#rrggbb` as the [r, g, b] kepler layer configs take. */
 export function hexToRgb(hex: string): [number, number, number] {
   const n = Number.parseInt(hex.slice(1), 16);

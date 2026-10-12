@@ -8,6 +8,7 @@ dependencies = [
     "fastmcp>=4.1",
     "duckdb>=1.0",
     "networkx>=3.4",
+    "numpy>=2.2",
 ]
 
 [project.scripts]

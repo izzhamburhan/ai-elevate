@@ -9,12 +9,12 @@ import { currentTowerStatus, type TowerPin } from "./tower-status";
 /** Dataset id of the down towers a new chat's map starts with; `TowerPulse` rings the same rows. */
 export const DOWN_TOWERS_DATA_ID = "towers_down";
 
-/** The "Towers down" dataset for these towers, labelled for the tooltip; null when there are none. */
+/** The "Tower outages" dataset for these towers, labelled for the tooltip; null when there are none. */
 export function downTowersDataset(towers: TowerPin[]) {
   if (!towers.length) return null;
   const rows = towers.map(({ enodeb_name, town, state, lat, lng, status }) => ({ tower: enodeb_name, town, state, status, lat, lng }));
   const data = processRowObject(rows);
-  return data ? { info: { id: DOWN_TOWERS_DATA_ID, label: "Towers down" }, data } : null;
+  return data ? { info: { id: DOWN_TOWERS_DATA_ID, label: "Tower outages" }, data } : null;
 }
 
 /**
@@ -49,7 +49,7 @@ export async function downTowersAction() {
               type: "point",
               config: {
                 dataId: DOWN_TOWERS_DATA_ID,
-                label: "Towers down",
+                label: "Tower outages",
                 columns: { lat: "lat", lng: "lng" },
                 isVisible: true,
                 color: hexToRgb(TOWER_STATUS_COLOR.DOWN),

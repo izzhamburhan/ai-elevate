@@ -9,7 +9,8 @@ Usage (from backend/):
 
 Menara servers are found by scanning */src/*/server.py for DEFAULT_PORT, so a new MCP shows up without
 changes. Missing seed data is created on first run, and the Menara DB is built from NetOps's data. Every server
-starts with --search (BM25 tool search) unless --no-search is given. netops-mcp keeps its own environment
+starts with --search (BM25 tool search) unless --no-search is given; a Menara server with only a few tools
+lists them directly anyway (menara_core.mcp_server.LIST_DIRECTLY_UP_TO). netops-mcp keeps its own environment
 (Python 3.12, fastmcp) and is started from its own folder.
 Ports: frontend 3000, netops 8000, Menara MCPs 8101-8126.
 """

@@ -106,3 +106,41 @@ def test_add_note_rejects_bad_input(conn: sqlite3.Connection, text: str, author:
 def test_add_note_cannot_touch_other_tables(conn: sqlite3.Connection) -> None:
     with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
         conn.execute("UPDATE ticket SET status = 'RESOLVED'")
+
+
+def test_open_near_tower_grows_with_the_storm_and_drops_resolved(
+    conn: sqlite3.Connection, set_clock: Callable[[int], None]
+) -> None:
+    set_clock(0)
+    first = tools.open_near_tower(conn, "kkri-0142").data
+    assert first.enodeb_name == "KKRI-0142" and "TK-88213" in {t.ticket_id for t in first.tickets}
+    set_clock(STORM_END_MIN)
+    storm = tools.open_near_tower(conn, "KKRI-0142").data
+    assert storm.count > first.count
+    assert all(t.status != "RESOLVED" and t.distance_km <= 3 for t in storm.tickets)
+    wide = {t.ticket_id for t in tools.open_near_tower(conn, "KKRI-0142", radius_km=15).data.tickets}
+    assert {f"TK-{88213 + i}" for i in range(37)} <= wide
+    tools.resolve(conn, ["TK-88213"], "Service restored")
+    assert "TK-88213" not in {t.ticket_id for t in tools.open_near_tower(conn, "KKRI-0142").data.tickets}
+
+
+def test_open_near_tower_checks_its_arguments(conn: sqlite3.Connection) -> None:
+    with pytest.raises(NotFoundError):
+        tools.open_near_tower(conn, "NOPE-0000")
+    with pytest.raises(InvalidInputError):
+        tools.open_near_tower(conn, "KKRI-0142", radius_km=0)
+    with pytest.raises(InvalidInputError):
+        tools.open_near_tower(conn, "KKRI-0142", limit=0)
+    with pytest.raises(InvalidInputError, match="ISO"):
+        tools.open_near_tower(conn, "KKRI-0142", since="yesterday")
+
+
+def test_open_near_tower_since_keeps_only_tickets_raised_after_the_fault(
+    conn: sqlite3.Connection, set_clock: Callable[[int], None]
+) -> None:
+    set_clock(STORM_END_MIN)
+    everything = tools.open_near_tower(conn, "KKRI-0142", radius_km=15).data
+    since_t0 = tools.open_near_tower(conn, "KKRI-0142", radius_km=15, since="2026-11-14T07:00:00+08:00").data
+    naive = tools.open_near_tower(conn, "KKRI-0142", radius_km=15, since="2026-11-14T07:00:00").data
+    assert since_t0.count == naive.count == 37 <= everything.count
+    assert all(t.created_at >= "2026-11-14T07:00:00" for t in since_t0.tickets)

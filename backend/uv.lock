@@ -1454,6 +1454,7 @@ dependencies = [
     { name = "fastmcp" },
     { name = "menara-core" },
     { name = "networkx" },
+    { name = "numpy" },
 ]
 
 [package.metadata]
@@ -1462,6 +1463,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=4.1" },
     { name = "menara-core", editable = "menara-core" },
     { name = "networkx", specifier = ">=3.4" },
+    { name = "numpy", specifier = ">=2.2" },
 ]
 
 [[package]]

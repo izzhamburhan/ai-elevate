@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from fastmcp import FastMCP
 from fastmcp.server.transforms.search import BM25SearchTransform
 from fastmcp.tools import Tool
+
+# Up to this many tools, a server lists them as they are: their definitions cost less than the
+# search round trip the agent would spend finding them on every turn.
+LIST_DIRECTLY_UP_TO = 6
 
 
 class DescribedBM25SearchTransform(BM25SearchTransform):
@@ -12,11 +18,17 @@ class DescribedBM25SearchTransform(BM25SearchTransform):
 
     FastMCP's stock descriptions ("Search for tools using natural language") give a model nothing to
     go on, so small models skip them and reach for a better-described tool from another server.
+    A server with only a few tools skips search and lists them directly; the call tool still works.
     """
 
     def __init__(self, *, topic: str, search_tool_name: str, call_tool_name: str) -> None:
         super().__init__(search_tool_name=search_tool_name, call_tool_name=call_tool_name)
         self._topic = topic
+
+    async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
+        if len(tools) <= LIST_DIRECTLY_UP_TO:
+            return tools
+        return await super().transform_tools(tools)
 
     def _make_search_tool(self) -> Tool:
         return super()._make_search_tool().model_copy(
@@ -37,7 +49,8 @@ class DescribedBM25SearchTransform(BM25SearchTransform):
 
 
 def add_tool_search(mcp: FastMCP, prefix: str) -> None:
-    """Collapse the tool listing into <prefix>_search_tools + <prefix>_call_tool (BM25 ranking).
+    """Collapse the tool listing into <prefix>_search_tools + <prefix>_call_tool (BM25 ranking), unless
+    the server has no more than LIST_DIRECTLY_UP_TO tools.
 
     The prefix keeps the two synthetic tools unique when a client merges several servers' tools by name.
     The server's first instruction sentence becomes the search tool's topic.

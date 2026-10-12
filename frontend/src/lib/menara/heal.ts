@@ -9,6 +9,8 @@ import { callMenaraTool, dataOf } from "./call";
  */
 export const STAGES = ["detect", "diagnose", "simulate", "approve", "apply", "verify", "rollback", "recover"] as const;
 export type Stage = (typeof STAGES)[number];
+/** Why neighbours are tilted: to cover a dead tower's area, or to shed an overloaded neighbour's load. */
+export type TiltPurpose = "cover" | "shed";
 
 export const THRESHOLD_PRB = 85;
 const FLOOD_TOWER = "KKRI-0142"; // the flood story's tower, healed only when asked for by name
@@ -22,6 +24,9 @@ const KPI_STEP_MIN = 15; // the clock moves in these steps until a KPI sample af
 const CREW_WAIT_STEP_MIN = 30;
 const CREW_WAIT_MAX_MIN = 12 * 60;
 const APPROVER = "elevate-ui-human";
+const RESOLVER = "elevate-self-heal";
+/** The diagnosis cause as an NTT fault type. */
+const NTT_FAULT: Record<string, string> = { FLOOD: "FLOOD", POWER: "POWER", TRANSPORT: "FIBER", CONFIG: "RAN", HARDWARE: "HARDWARE" };
 
 type Args = Record<string, unknown>;
 type Data = Record<string, unknown>;
@@ -30,7 +35,8 @@ type Data = Record<string, unknown>;
 
 export type RunEvent =
   | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
-  | { type: "approval"; approvalId: string; summary: string }
+  // `action` and `targets` let the map draw what is proposed; `purpose` says what a neighbour tilt is for
+  | { type: "approval"; approvalId: string; summary: string; action: string; targets: string[]; purpose?: TiltPurpose }
   | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
 
 type Run = {
@@ -98,10 +104,11 @@ async function pickTarget(): Promise<string> {
 class Stopped extends Error {}
 
 type Neighbour = { enodeb_name: string; status: string; prb_util: number | null };
+type Alarm = { code: string; message: string; raised_at?: string };
 type Diagnosis = { cause: string; confidence: number; skill: string | null; remote: "reset" | null; why: string; problem: string };
 
 /** What the evidence says is wrong, and who or what can fix it. */
-function diagnose(status: Data, alarms: { code: string; message: string }[], power: Data, flood: Data): Diagnosis {
+function diagnose(status: Data, alarms: Alarm[], power: Data, flood: Data): Diagnosis {
   const codes = new Set(alarms.map((a) => a.code));
   const feeder = (power.feeder as { status?: string; note?: string } | undefined) ?? {};
   const noMains = status.mains_ok === false || (feeder.status != null && feeder.status !== "ENERGISED");
@@ -151,7 +158,7 @@ async function execute(run: Run) {
   const leftAsIs = () => (activeTilt ? `the neighbour tilt ${activeTilt.change_id} stays until ${T} is back` : "nothing was changed");
 
   /** Human in the loop: policy first, then a person decides. Returns a token, or stops the run. */
-  const authorise = async (action: string, targets: string[], confidence: number, reason: string, what: string) => {
+  const authorise = async (action: string, targets: string[], confidence: number, reason: string, what: string, purpose?: TiltPurpose) => {
     const check = await call("policy_check_action", { action, targets, confidence, reason });
     const decision = String(check.decision);
     if (decision === "deny") {
@@ -163,7 +170,7 @@ async function execute(run: Run) {
     const asked = Date.now();
     const approved = await new Promise<boolean>((resolve) => {
       run.pending = resolve;
-      run.events.push({ type: "approval", approvalId, summary: `${what}. Policy: ${String(check.reason ?? decision)}` });
+      run.events.push({ type: "approval", approvalId, summary: `${what}. Policy: ${String(check.reason ?? decision)}`, action, targets, ...(purpose ? { purpose } : {}) });
     });
     const key = process.env.MENARA_APPROVER_KEY ?? "dev-only-approver-key";
     if (!approved) {
@@ -232,6 +239,7 @@ async function execute(run: Run) {
       confidence,
       reason,
       `Uptilt ${fit.join(", ")} by ${COVER_TILT_DEG}° so they cover ${T}'s area while it is down`,
+      "cover",
     );
     const before = Object.fromEntries(up.map((n) => [n.enodeb_name, n.prb_util ?? 0]));
     const applied = await clockNow();
@@ -271,10 +279,28 @@ async function execute(run: Run) {
     incidentStatus = status;
   };
 
+  // The Network Trouble Ticket (NTT) for the fault, with the customer tickets raised near the tower since it began
+  // linked to it; resolving it on recovery closes them too. Ticketing is bookkeeping: if it fails the run goes on.
+  let nttId = "";
+  let faultSince: string | undefined;
+  const nearbyTickets = async () =>
+    (((await call("ticket_list_open_near_tower", { enodeb_name: T, ...(faultSince ? { since: faultSince } : {}) })).tickets as
+      | { ticket_id: string }[]
+      | undefined) ?? []).map((t) => t.ticket_id);
+  const ticketing = async (stage: Stage, what: string, work: () => Promise<void>) => {
+    try {
+      await work();
+    } catch (error) {
+      if (error instanceof Stopped) throw error;
+      say(stage, `Ticketing: could not ${what} (${error instanceof Error ? error.message : String(error)})`);
+    }
+  };
+
   try {
     // ---- detect
     const status = await call("tower_get_status", { enodeb_name: T });
-    const alarms = ((await call("tower_get_alarms", { enodeb_name: T, active_only: true })).alarms as { code: string; message: string }[] | undefined) ?? [];
+    const alarms = ((await call("tower_get_alarms", { enodeb_name: T, active_only: true })).alarms as Alarm[] | undefined) ?? [];
+    faultSince = alarms.map((a) => a.raised_at).filter((at): at is string => !!at).sort()[0];
     say("detect", `${T} is ${String(status.status)}${alarms.length ? `: ${alarms[0].code}` : ""}`);
     const neighbours = ((status.neighbours as Neighbour[] | undefined) ?? []).filter((n) => n.enodeb_name !== T);
     const hot = neighbours.filter((n) => n.status === "UP" && (n.prb_util ?? 0) >= THRESHOLD_PRB);
@@ -311,6 +337,23 @@ async function execute(run: Run) {
       incidentId = String(made.incident_id ?? "");
       say("diagnose", `Incident ${incidentId} opened (${dx.cause})`);
     }
+    if (status.status !== "UP") {
+      await ticketing("diagnose", "raise the NTT", async () => {
+        const ntt = await call("ticket_create_ntt", {
+          network_element_id: T,
+          fault_type: NTT_FAULT[dx.cause] ?? "OTHER",
+          severity: status.status === "DOWN" ? "CRITICAL" : "MAJOR",
+          summary: `${T} ${String(status.status)}: ${dx.why}`.slice(0, 500),
+          ctt_ticket_ids: await nearbyTickets(),
+          // the outage the MCMC check measures runs from the first alarm, not from when this run noticed it
+          ...(faultSince ? { fault_began_at: faultSince } : {}),
+        });
+        nttId = String(ntt.ntt_id ?? "");
+        const linked = Number(ntt.ctt_count ?? 0);
+        say("diagnose", `${nttId}: ${linked} customer ticket${linked === 1 ? "" : "s"} linked`);
+        await note(`Network trouble ticket ${nttId} tracks this fault (${linked} customer tickets linked).`);
+      });
+    }
 
     // ---- simulate, then act on the neighbours: shed load from overloaded ones (load balancing), or, when the
     // tower is down and they have room, uptilt them to cover its area (cell outage compensation)
@@ -330,6 +373,7 @@ async function execute(run: Run) {
           dx.confidence,
           `Relieve overloaded neighbours of ${T}`,
           `Tilt ${targets.join(", ")} down by ${TILT_DEG}° to shed load (try ${tiltAttempt})`,
+          "shed",
         );
         const applied = await clockNow();
         const change = await call("ran_tilt_cells", { changes, policy_token: token, reason: `Relieve the neighbours of ${T}` });
@@ -427,9 +471,24 @@ async function execute(run: Run) {
       }
       await moveIncident("RESOLVED", `${T} restored by self-heal.`);
       say("recover", `${T} is UP; incident ${incidentId} resolved`);
-      run.events.push({ type: "final", status: "done", text: `${T} healed: the ${dx.problem} was fixed and incident ${incidentId} is resolved. Every action was approved by you. All data is synthetic.` });
+      let tickets = "";
+      if (nttId) {
+        await ticketing("recover", `resolve ${nttId}`, async () => {
+          // tickets keep arriving while the tower is down: link the late ones so they close with the rest
+          const late = await nearbyTickets();
+          if (late.length) await call("ticket_link_ctts", { ntt_id: nttId, ctt_ticket_ids: late });
+          const done = await call("ticket_resolve_ntt", { ntt_id: nttId, resolution_note: `${T} restored by self-heal: the ${dx.problem} was fixed.`, resolved_by: RESOLVER });
+          const closed = ((done.resolved_ctts as string[] | undefined) ?? []).length;
+          const mcmc = (done.mcmc as { can_send?: boolean; outage_duration_min?: number } | undefined) ?? {};
+          const notice = mcmc.can_send ? "simulated MCMC closure notice recorded" : "no MCMC closure notice needed";
+          say("recover", `${nttId} resolved: ${closed} customer ticket${closed === 1 ? "" : "s"} closed; ${notice}`);
+          tickets = ` ${nttId} is resolved and ${closed} customer ticket${closed === 1 ? " was" : "s were"} closed with it (${notice}${mcmc.outage_duration_min != null ? ` for a ${mcmc.outage_duration_min} min outage` : ""}).`;
+        });
+      }
+      run.events.push({ type: "final", status: "done", text: `${T} healed: the ${dx.problem} was fixed and incident ${incidentId} is resolved.${tickets} Every action was approved by you. All data is synthetic.` });
     } else {
-      run.events.push({ type: "final", status: "done", text: `${T} is still down; the neighbours were handled and incident ${incidentId} stays open for a person. All data is synthetic.` });
+      const stillOpen = nttId ? `incident ${incidentId} and ${nttId} stay` : `incident ${incidentId} stays`;
+      run.events.push({ type: "final", status: "done", text: `${T} is still down; the neighbours were handled and ${stillOpen} open for a person. All data is synthetic.` });
     }
     run.status = "done";
   } catch (error) {
@@ -529,7 +588,8 @@ export async function healState(): Promise<HealState> {
         | undefined) ?? [])
     : [];
   const tiltedNow = new Set(changes.filter((c) => c.status === "ACTIVE").flatMap((c) => (c.towers as string[] | undefined) ?? []));
-  const prbNow = Object.fromEntries(neighbours.map((n) => [n.enodeb_name, n.prb_util]));
+  const prbNow: Record<string, number | null> = Object.fromEntries(neighbours.map((n) => [n.enodeb_name, n.prb_util]));
+  prbNow[failed] = (status.latest_kpi as { prb_util?: number } | null | undefined)?.prb_util ?? null; // the tower's own load, 0 while it is down
   const mapTowers = around
     .filter((t) => t.enodeb_name === failed || names.includes(t.enodeb_name))
     .map((t) => ({

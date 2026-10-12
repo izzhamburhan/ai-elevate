@@ -5,6 +5,8 @@ description: Discover ranked TM opportunities from the Telco Opportunity Graph, 
 
 # Opportunity discovery procedure
 
+Use this procedure only for opportunity discovery requests. For a Decision Time Machine (simulation) request, use the `elevate-decision-time-machine` skill instead.
+
 Finish after exactly these steps:
 
 1. Call `opportunity_discover(top_k=3)` once. Keep each opportunity's rank, opportunity_id, area, supporting_site_ids, scores, confidence, indicative range and risks exactly as returned.

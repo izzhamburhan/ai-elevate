@@ -87,11 +87,18 @@ const reasoningDuration = (timing: ThreadGroupPart["timing"]) =>
  * `ToolFallback`. When `TaskGroup` is set, tool calls that carry a nested
  * conversation and have no registered UI render through it instead of the
  * tool group; without it they render like any other tool call.
+ * `ChainOfThought` wraps each run of reasoning and tool calls (cards and
+ * answer text stay outside it), e.g. to fold the run into one line. Its
+ * children are the run's parts themselves, so `ToolGroup` and
+ * `ReasoningGroup` don't apply then.
  */
 export type ThreadComponents = {
   AssistantMessage?: ComponentType | undefined;
   Welcome?: ComponentType | undefined;
   ToolFallback?: ToolCallMessagePartComponent | undefined;
+  ChainOfThought?:
+    | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
+    | undefined;
   ToolGroup?:
     | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
     | undefined;
@@ -108,6 +115,13 @@ export type ThreadComponents = {
 const messageGroupBy = groupPartByType({
   reasoning: ["group-chainOfThought", "group-reasoning"],
   "tool-call": ["group-chainOfThought", "group-tool"],
+  "standalone-tool-call": [],
+});
+
+/** One level only: the `ChainOfThought` slot lists the run's steps itself. */
+const flatChainGroupBy = groupPartByType({
+  reasoning: ["group-chainOfThought"],
+  "tool-call": ["group-chainOfThought"],
   "standalone-tool-call": [],
 });
 
@@ -635,11 +649,16 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
   const {
     ToolFallback: ToolFallbackComponent = ToolFallback,
+    ChainOfThought,
     ToolGroup,
     ReasoningGroup,
     TaskGroup: TaskGroupComponent,
   } = useContext(ThreadComponentsContext);
-  const groupBy = TaskGroupComponent ? taskAwareGroupBy : messageGroupBy;
+  const groupBy = TaskGroupComponent
+    ? taskAwareGroupBy
+    : ChainOfThought
+      ? flatChainGroupBy
+      : messageGroupBy;
 
   const ACTION_BAR_PT = "pt-1.5";
   // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -659,6 +678,11 @@ const AssistantMessage: FC = () => {
           {({ part, children }) => {
             switch (part.type) {
               case "group-chainOfThought":
+                if (ChainOfThought) {
+                  return (
+                    <ChainOfThought group={part}>{children}</ChainOfThought>
+                  );
+                }
                 return <div data-slot="aui_chain-of-thought">{children}</div>;
               case "group-task":
                 return TaskGroupComponent ? (

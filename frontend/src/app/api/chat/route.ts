@@ -90,8 +90,32 @@ export async function POST(req: Request) {
     // Usage rides on the assistant message so the client's context meter (and saved history) has it.
     let stepCount = 0;
     let contextTokens: number | undefined;
+    // when each tool call ran; a call's start goes back to the thinking that led to it
+    let thinkingSince: number | undefined;
+    const startTool = (id: string): ChatMessageMetadata => {
+      const startedAt = thinkingSince ?? Date.now();
+      thinkingSince = undefined;
+      return { workTiming: { [id]: { startedAt } } };
+    };
+    const startedTools = new Set<string>();
     const messageMetadata = ({ part }: { part: TextStreamPart<ToolSet> }): ChatMessageMetadata | undefined => {
       switch (part.type) {
+        case "reasoning-start":
+          thinkingSince ??= Date.now();
+          return;
+        case "text-start":
+          thinkingSince = undefined;
+          return;
+        case "tool-input-start":
+          startedTools.add(part.id);
+          return startTool(part.id);
+        case "tool-call":
+          if (startedTools.has(part.toolCallId)) return;
+          startedTools.add(part.toolCallId);
+          return startTool(part.toolCallId);
+        case "tool-result":
+        case "tool-error":
+          return { workTiming: { [part.toolCallId]: { endedAt: Date.now() } } };
         case "start":
           return { modelId: resolved.id, contextWindow: resolved.contextWindow, toolNames: Object.keys(agentTools) };
         case "finish-step":

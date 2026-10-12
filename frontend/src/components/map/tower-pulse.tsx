@@ -76,7 +76,7 @@ function ringsFor(instance: Instance): Ring[] {
 /**
  * The down-tower marker of the Menara command center's map: a glowing core with two rings pulsing
  * out of it, so outages stand out. kepler keeps a dot underneath for the tooltip; this draws the
- * marker, positioned from kepler's map state. It follows the "Towers down" layer: hide or remove
+ * marker, positioned from kepler's map state. It follows the "Tower outages" layer: hide or remove
  * the layer and the markers go too. Clicks pass through to the map.
  * Render it right after `<KeplerGl>`: it sits above the map and below the side panel.
  */
