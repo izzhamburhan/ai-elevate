@@ -29,6 +29,15 @@ export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
     setupHint: "cd netops-mcp && uv run python -m netops_mcp.server --http",
   },
   {
+    id: "builtin:weather-ml",
+    name: "Weather ML",
+    description:
+      "Local Chronos machine-learning rainfall and temperature forecasts, evaluation metrics, and weather exposure overlays. Experimental research forecasts; historical replay is labeled. Site exposure does not predict outages.",
+    url: process.env.NEXT_PUBLIC_WEATHER_MCP_URL ?? "http://127.0.0.1:8002/mcp",
+    transport: "http",
+    setupHint: "cd weather-ml-mcp && docker compose -p ai-elevate-weather up -d (bootstrap model and data first).",
+  },
+  {
     id: "builtin:kepler",
     name: "Kepler.gl Map",
     description:

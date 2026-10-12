@@ -1,0 +1,106 @@
+name: ai-elevate-weather
+
+x-environment: &environment
+  WEATHER_DATA_DIR: /data
+  WEATHER_MODEL_DIR: /models/chronos-2-small
+  WEATHER_REPORTS_DIR: /reports
+  WEATHER_MODEL_ID: ${WEATHER_MODEL_ID:-autogluon/chronos-2-small}
+  WEATHER_MODEL_REVISION: ${WEATHER_MODEL_REVISION:-ddec01313e50b6bc58ebaa92ede81bc24a3d9f9a}
+  WEATHER_MODE: ${WEATHER_MODE:-replay}
+  WEATHER_REPLAY_CUTOFF: ${WEATHER_REPLAY_CUTOFF:-2026-09-25T23:00:00Z}
+  WEATHER_CONTEXT_HOURS: ${WEATHER_CONTEXT_HOURS:-336}
+  WEATHER_FRESHNESS_HOURS: ${WEATHER_FRESHNESS_HOURS:-6}
+  WEATHER_METRICS_PATH: /reports/report.json
+  WEATHER_NETOPS_URL: ${WEATHER_NETOPS_URL:-http://host.docker.internal:8000}
+  WEATHER_NETOPS_MAX_SITES: ${WEATHER_NETOPS_MAX_SITES:-200}
+  WEATHER_MAX_LOCATION_DISTANCE_KM: ${WEATHER_MAX_LOCATION_DISTANCE_KM:-50}
+  WEATHER_ELEVATED_RAINFALL_MM_PER_HOUR: ${WEATHER_ELEVATED_RAINFALL_MM_PER_HOUR:-2.5}
+  WEATHER_HIGH_RAINFALL_MM_PER_HOUR: ${WEATHER_HIGH_RAINFALL_MM_PER_HOUR:-10}
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  HF_HUB_DISABLE_XET: "1"
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  OPENBLAS_NUM_THREADS: "1"
+
+x-job: &job
+  image: ai-elevate-weather-ml:0.1.0
+  profiles: [tools]
+  environment: *environment
+  mem_limit: 2560m
+  cpus: 2.0
+  pids_limit: 256
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  healthcheck:
+    disable: true
+  volumes:
+    - model-cache:/models
+    - weather-data:/data
+    - evaluation-reports:/reports
+
+services:
+  weather:
+    image: ai-elevate-weather-ml:0.1.0
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:${WEATHER_HOST_PORT:-8002}:8001"
+    environment: *environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - model-cache:/models:ro
+      - weather-data:/data:ro
+      - evaluation-reports:/reports:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    restart: unless-stopped
+    mem_limit: 2560m
+    cpus: 2.0
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/readyz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+  bootstrap:
+    <<: *job
+    environment:
+      <<: *environment
+      HF_HUB_OFFLINE: "0"
+      TRANSFORMERS_OFFLINE: "0"
+    entrypoint: [python, -m, weather_ml_mcp.bootstrap]
+    command: []
+
+  ingest:
+    <<: *job
+    entrypoint: [python, -m, weather_ml_mcp.ingest]
+    command: [--help]
+
+  evaluate:
+    <<: *job
+    entrypoint: [python, -m, weather_ml_mcp.evaluate]
+    command: [--data-dir, /data, --model-dir, /models/chronos-2-small, --output-dir, /reports]
+
+  tests:
+    <<: *job
+    entrypoint: [python, -m, pytest]
+    command: [-q, -p, no:cacheprovider]
+
+volumes:
+  model-cache:
+  weather-data:
+  evaluation-reports:
