@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Loader2, MapPinned, ShieldAlert, Wrench, X } from "lucide-react";
+import { Check, Loader2, MapPinned, RotateCcw, ShieldAlert, Wrench, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FLOATING_EVENT, useMapDraw } from "@/lib/menara/map-draw";
@@ -24,7 +24,7 @@ const STAGES: { id: Stage; title: string }[] = [
 type RunEvent =
   | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
   | { type: "approval"; approvalId: string; summary: string; action?: string; targets?: string[]; purpose?: "cover" | "shed" }
-  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
+  | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string; healthy?: boolean };
 type EventsReply = { runId: string | null; status: string; events: RunEvent[]; next: number; awaitingApproval?: boolean };
 type Point = { t_min: number; prb: number };
 type MapTower = { name: string; lat: number; lng: number; role: "failed" | "neighbour"; status: string; prb_now: number | null; tilted: boolean };
@@ -168,6 +168,9 @@ export function HealPanel({ runId }: { runId?: string }) {
   const [state, setState] = useState<HealState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // the run this card shows as its own: the one the chat started, or the one "Reset demo and heal again" started
+  const [ownRunId, setOwnRunId] = useState(runId);
+  const [replaying, setReplaying] = useState(false);
   const next = useRef(0);
   const busy = useRef(false);
   const drawn = useRef<string>("");
@@ -175,7 +178,7 @@ export function HealPanel({ runId }: { runId?: string }) {
   const floatingId = useId();
 
   // this card's run is the current one (older chat cards only show their stages)
-  const owns = Boolean(runId) && currentId === runId;
+  const owns = Boolean(ownRunId) && currentId === ownRunId;
 
   const refreshState = useCallback(async () => {
     try {
@@ -328,6 +331,28 @@ export function HealPanel({ runId }: { runId?: string }) {
     draw.removeOurs(["heal_"]);
   };
 
+  // fallback for a tower that is already healthy: rewind the demo (clock, incidents, tilts, tickets) and heal it again
+  const replay = async (tower: string) => {
+    setReplaying(true);
+    setError(null);
+    try {
+      await post("/api/menara/reset");
+      const started = await post<{ runId: string }>("/api/menara/heal", { tower });
+      next.current = 0;
+      drawn.current = "";
+      framed.current = false;
+      setEvents([]);
+      setApproval(null);
+      setOwnRunId(started.runId);
+      await poll();
+      void refreshState();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReplaying(false);
+    }
+  };
+
   const showAgain = () => {
     setOpen(true);
     window.dispatchEvent(new CustomEvent(FLOATING_EVENT, { detail: floatingId }));
@@ -339,6 +364,8 @@ export function HealPanel({ runId }: { runId?: string }) {
   const running = status === "running";
   // the stage a rejection, a policy denial or a missing crew stopped the run at; the stages after it never ran
   const blockedAt = !running ? STAGES.findIndex((s) => stageEvents.findLast((e) => e.stage === s.id)?.blocked) : -1;
+  const healthy = final?.healthy === true;
+  const healthyTower = healthy ? (state?.failed_tower ?? stageEvents[0]?.label.split(" ")[0]) : undefined;
   const peak = state && state.watched.length ? Math.max(...state.watched.flatMap((t) => state.series[t].map((p) => p.prb))) : null;
   const now = state && state.watched.length ? Math.max(...state.watched.map((t) => state.series[t].at(-1)?.prb ?? 0)) : null;
 
@@ -371,7 +398,7 @@ export function HealPanel({ runId }: { runId?: string }) {
           const active = running && last?.stage === s.id;
           const blocked = i === blockedAt;
           const done = seen.length > 0 && !active && !blocked;
-          const skipped = blockedAt >= 0 && i > blockedAt && !seen.length;
+          const skipped = ((blockedAt >= 0 && i > blockedAt) || healthy) && !seen.length;
           const latest = seen.at(-1);
           return (
             <li
@@ -397,13 +424,27 @@ export function HealPanel({ runId }: { runId?: string }) {
               </span>
               <span className="font-medium">{s.title}</span>
               {latest?.attempt ? <span className="whitespace-nowrap rounded-full bg-muted px-1.5 text-[10px]">try {latest.attempt}</span> : null}
-              <span className={cn("ml-auto truncate text-right", blocked ? "text-red" : "text-muted-foreground")}>{latest?.label ?? (skipped ? "Skipped" : "")}</span>
+              <span className={cn("ml-auto truncate text-right", blocked ? "text-red" : "text-muted-foreground")}>{latest?.label ?? (skipped ? (healthy ? "Not needed" : "Skipped") : "")}</span>
             </li>
           );
         })}
       </ol>
 
-      {final ? (
+      {healthy ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-green/30 bg-green/10 px-2.5 py-2 text-[12px] leading-5">
+          <p>{final?.text}</p>
+          {owns && healthyTower ? (
+            <>
+              <Button size="sm" variant="outline" className="self-start" disabled={replaying} onClick={() => void replay(healthyTower)}>
+                {replaying ? <Loader2 className="animate-spin" /> : <RotateCcw />} Reset demo and heal again
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                Rewinds the demo clock to the start of the incident and clears earlier runs, incidents, tilts and tickets.
+              </p>
+            </>
+          ) : null}
+        </div>
+      ) : final ? (
         <p
           className={cn(
             "rounded-lg border px-2.5 py-2 text-[12px] leading-5",

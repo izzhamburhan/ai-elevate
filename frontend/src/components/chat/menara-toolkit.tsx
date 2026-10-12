@@ -166,14 +166,18 @@ export const menaraToolkit = defineToolkit({
       tower: z.string().optional().describe("eNodeB name of the faulty tower, e.g. KLCC-4721; KKRI-0142 for the flood incident. Omit for the most urgent real outage."),
     }),
     execute: async ({ tower }) => {
-      const started = await post<{ runId: string; tower: string; existing: boolean }>("/api/menara/heal", { tower });
+      const started = await post<{ runId: string; tower: string; existing: boolean; healthy?: boolean }>("/api/menara/heal", { tower });
       return {
         run_id: started.runId,
         tower: started.tower,
         already_running: started.existing,
+        already_healthy: Boolean(started.healthy),
         note: started.existing
           ? `A self-heal run on ${started.tower} is already going; the card shows it. Finish or reject it before healing another tower.`
-          : "The self-heal card is shown to the user. A human must approve each action in the card (human in the loop).",
+          : started.healthy
+            ? `${started.tower} is already UP with no active alarms and no overloaded neighbours, so nothing was healed or changed. ` +
+              "Say so in one sentence; do not say it was healed now. The card offers 'Reset demo and heal again' to replay the outage."
+            : "The self-heal card is shown to the user. A human must approve each action in the card (human in the loop).",
       };
     },
     render: ({ result }) => (result ? <HealPanel runId={(result as { run_id?: string }).run_id} /> : <Working text="Starting the self-heal…" />),
