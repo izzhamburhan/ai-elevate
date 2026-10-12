@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
 import {
+  addLayer,
   interactionConfigChange,
   setFilterAnimationTimeConfig,
   setFilterAnimationWindow,
@@ -59,6 +60,13 @@ const TRAIL_EVENT = "menara:trail-open";
 const TRAIL_DATA = "trail_moves";
 const TRAIL_FILTER = "trail_time";
 type TooltipConfig = { config: { fieldsToShow: Record<string, { name: string; format: string | null }[]> } };
+const SAMPLE_MIN = 15; // presence samples during each stay, so the playback histogram shows when the phone was seen
+const LABEL_SLOTS = 3; // the 1st, 2nd and 3rd visit to the same cell are labelled side by side
+
+/** An ISO time with the Malaysia offset, e.g. "2026-11-13T08:43:00+08:00". */
+function isoMyt(ms: number) {
+  return `${new Date(ms + 8 * 3600_000).toISOString().slice(0, 19)}+08:00`;
+}
 
 
 export type Section = "towers" | "subscribers" | "usage";
@@ -300,20 +308,47 @@ export function AreaCard({
    */
   const drawTrailPlayback = async (segments: Segment[]) => {
     if (!segments.length) return;
-    const rows = segments.map((s, i) => ({
-      order: i + 1,
-      cell: s.serving_cell,
-      tower: s.enodeb_name,
-      // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
-      arrived_at: s.arrived_at,
-      // what the tooltip shows: kepler prints timestamps in UTC there
-      arrived_myt: `${s.arrived_at.slice(0, 10)} ${s.arrived_at.slice(11, 16)}`,
-      stay_min: Math.round(s.duration_min),
-      lat: s.cell_lat,
-      lng: s.cell_lng,
-      lat0: i ? segments[i - 1].cell_lat : s.cell_lat,
-      lng0: i ? segments[i - 1].cell_lng : s.cell_lng,
-    }));
+    const seen = new Map<string, number>();
+    const rows: Record<string, string | number>[] = [];
+    segments.forEach((s, i) => {
+      const nth = (seen.get(s.serving_cell) ?? 0) + 1;
+      seen.set(s.serving_cell, nth);
+      const labels = Object.fromEntries(Array.from({ length: LABEL_SLOTS }, (_, k) => [`label_${k + 1}`, k === Math.min(nth, LABEL_SLOTS) - 1 ? `#${i + 1}` : ""]));
+      const base = {
+        order: i + 1,
+        cell: s.serving_cell,
+        tower: s.enodeb_name,
+        stay_min: Math.round(s.duration_min),
+        lat: s.cell_lat,
+        lng: s.cell_lng,
+      };
+      // the visit: a stop, a move from the previous stop, and its number next to the circle
+      rows.push({
+        ...base,
+        kind: "visit",
+        // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
+        arrived_at: s.arrived_at,
+        // what the tooltip shows: kepler prints timestamps in UTC there
+        time_myt: `${s.arrived_at.slice(0, 10)} ${s.arrived_at.slice(11, 16)}`,
+        lat0: i ? segments[i - 1].cell_lat : s.cell_lat,
+        lng0: i ? segments[i - 1].cell_lng : s.cell_lng,
+        ...labels,
+      });
+      // still there: a sample every SAMPLE_MIN minutes of the stay (no move, no label)
+      const start = Date.parse(s.arrived_at);
+      for (let at = start + SAMPLE_MIN * 60_000; at < start + s.duration_min * 60_000; at += SAMPLE_MIN * 60_000) {
+        const iso = isoMyt(at);
+        rows.push({
+          ...base,
+          kind: "stay",
+          arrived_at: iso,
+          time_myt: `${iso.slice(0, 10)} ${iso.slice(11, 16)}`,
+          lat0: s.cell_lat,
+          lng0: s.cell_lng,
+          ...Object.fromEntries(Array.from({ length: LABEL_SLOTS }, (_, k) => [`label_${k + 1}`, ""])),
+        });
+      }
+    });
     await runKeplerCommand(store, MAP_ID, "load_data", { rows, label: "Subscriber trail", dataId: TRAIL_DATA, centerMap: false, autoCreateLayers: false });
     await runKeplerCommand(store, MAP_ID, "add_layer", {
       dataId: TRAIL_DATA,
@@ -324,19 +359,19 @@ export function AreaCard({
       opacity: 0.9,
       visConfig: { thickness: 3 },
     });
-    await runKeplerCommand(store, MAP_ID, "add_layer", { dataId: TRAIL_DATA, type: "point", label: "Trail stops", columns: { lat: "lat", lng: "lng" }, color: TRAIL_COLOR, radius: STOP_RADIUS });
-    showTooltipFields(TRAIL_DATA, ["order", "cell", "arrived_myt", "stay_min"]);
-    const times = segments.map((s) => Date.parse(s.arrived_at));
+    addStopsWithVisitNumbers();
+    showTooltipFields(TRAIL_DATA, ["order", "cell", "time_myt", "stay_min", "kind"]);
+    const times = rows.map((r) => Date.parse(String(r.arrived_at)));
     const start = Math.min(...times);
-    // one minute past the last arrival, so the last stop is inside the range
+    // one minute past the last sample, so the last stop is inside the range
     const end = Math.max(...times) + 60_000;
     try {
       await runKeplerCommand(store, MAP_ID, "add_filter", { dataId: TRAIL_DATA, field: "arrived_at", filterId: TRAIL_FILTER, value: [start, end] });
       const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID].visState.filters;
       const idx = filters.findIndex((f) => f.id === TRAIL_FILTER);
       if (idx >= 0) {
-        // the compact playback bar at the bottom of the map, in Malaysia time
-        store.dispatch(wrapTo(MAP_ID, setFilterView(idx, "minified")));
+        // kepler's full playback panel (histogram, play, speed) at the bottom of the map, in Malaysia time
+        store.dispatch(wrapTo(MAP_ID, setFilterView(idx, "enlarged")));
         store.dispatch(wrapTo(MAP_ID, setFilterAnimationTimeConfig(idx, { timezone: "Asia/Kuala_Lumpur" })));
         store.dispatch(wrapTo(MAP_ID, setFilterAnimationWindow({ id: TRAIL_FILTER, animationWindow: "incremental" })));
         store.dispatch(wrapTo(MAP_ID, toggleFilterAnimation(idx)));
@@ -346,6 +381,49 @@ export function AreaCard({
       // the trail still shows without playback
       console.warn("[trail] time playback unavailable", e);
     }
+  };
+
+  /**
+   * The stops layer, created with the visit numbers as text labels (one slot per visit to the same cell, side by side).
+   * The labels go in the layer config at creation: kepler builds the label font from the data then, and labels set later
+   * render as empty boxes.
+   */
+  const addStopsWithVisitNumbers = () => {
+    const id = "trail_stops_layer"; // one trail at a time; removeOurs drops it with the dataset
+    const hex = TRAIL_COLOR.replace("#", "");
+    const color = [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16));
+    store.dispatch(
+      wrapTo(
+        MAP_ID,
+        addLayer({
+          id,
+          type: "point",
+          config: {
+            dataId: TRAIL_DATA,
+            label: "Trail stops",
+            columns: { lat: "lat", lng: "lng" },
+            isVisible: true,
+            color,
+            textLabel: Array.from({ length: LABEL_SLOTS }, (_, k) => ({
+              field: { name: `label_${k + 1}`, type: "string" },
+              color: [255, 255, 255],
+              size: 32,
+              offset: [16 + k * 42, -16],
+              anchor: "start",
+              alignment: "center",
+              // a small dark chip behind white digits reads on both basemaps
+              outlineWidth: 0,
+              outlineColor: [0, 0, 0, 0],
+              background: true,
+              backgroundColor: [17, 24, 39, 220],
+            })),
+          },
+          // marks the config as a saved (v1) layer so kepler parses it
+          visualChannels: {},
+        } as never),
+      ),
+    );
+    runKeplerCommand(store, MAP_ID, "update_layer", { layerId: id, radius: STOP_RADIUS });
   };
 
   /** Which fields kepler's hover tooltip lists for a dataset. */
@@ -501,7 +579,7 @@ export function AreaCard({
             <div
               role="dialog"
               aria-label={`Trail of subscriber ${trail.hash.slice(0, 8)}`}
-              className="fixed right-4 bottom-44 z-[60] flex max-h-[52vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
+              className="fixed right-4 bottom-[19rem] z-[60] flex max-h-[calc(100vh-24rem)] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
             >
               <div className="flex items-center gap-1.5">
                 <Route className="size-3.5 text-muted-foreground" />
