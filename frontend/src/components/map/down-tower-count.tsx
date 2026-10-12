@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { ActionTypes, fitBounds, removeDataset, replaceDataInMap, updateMap, wrapTo } from "@kepler.gl/actions";
-import { WebMercatorViewport } from "@math.gl/web-mercator";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ActionTypes, removeDataset, replaceDataInMap, updateMap, wrapTo } from "@kepler.gl/actions";
+import { WebMercatorViewport, flyToViewport, getFlyToDuration } from "@math.gl/web-mercator";
 import { RefreshCw } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
@@ -22,14 +22,23 @@ type Dataset = {
   fields: { name: string }[];
   dataContainer: { numRows(): number; valueAt(row: number, column: number): unknown };
 };
+/** What kepler keeps of a layer click: deck.gl's pick info, whose object is the point's row. */
+type Clicked = { layer?: { id: string } | null; object?: { position?: number[]; index?: number } | null };
 type Instance = {
   mapState: MapState;
-  visState: { datasets: Record<string, Dataset | undefined> };
+  visState: {
+    datasets: Record<string, Dataset | undefined>;
+    layers: { id: string; config: { dataId: string } }[];
+    clicked?: Clicked | null;
+  };
   uiState: { activeSidePanel: string | null };
 };
 
 /** Zoom a tower opens at from the list, unless the map is already closer. */
 const TOWER_ZOOM = 11;
+/** Bounds of a flight's length: short hops still ease, long ones don't drag. */
+const FLY_MIN_MS = 1100;
+const FLY_MAX_MS = 2200;
 /** How long the pill pulses after a refresh finds new outages. */
 const NEW_PULSE_MS = 4000;
 
@@ -57,6 +66,97 @@ function inViewCount(instance: Instance, towers: TowerPin[], panelWidth: number)
 }
 
 const towerKey = (names: string[]) => [...names].sort().join("\n");
+
+type View = { longitude: number; latitude: number; zoom: number };
+
+/** The flight in progress, so a new one (or the user grabbing the map) replaces it. */
+let flight = 0;
+
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+/**
+ * Flies the map to a view: it zooms out, pans and zooms back in along one smooth curve. kepler
+ * keeps its own view state and drops deck.gl's transition props, so step the view each frame.
+ * Dragging or zooming the map mid-flight stops it where it is.
+ */
+function flyTo(store: KeplerStore, mapId: string, end: View) {
+  const instance = read(store, mapId);
+  if (!instance) return;
+  cancelAnimationFrame(flight);
+  const set = (view: View) => store.dispatch(wrapTo(mapId, updateMap(view as Parameters<typeof updateMap>[0])));
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return set(end);
+
+  const { width, height, pitch, bearing } = instance.mapState;
+  const from = { width, height, pitch, bearing, ...pick(instance.mapState) };
+  const to = { ...from, ...end };
+  const duration = Math.min(FLY_MAX_MS, Math.max(FLY_MIN_MS, getFlyToDuration(from, to)));
+  const startedAt = performance.now();
+  let last: View = pick(instance.mapState);
+
+  const step = (now: number) => {
+    const current = read(store, mapId)?.mapState;
+    if (!current || !sameView(current, last)) return;
+    const t = Math.min(1, (now - startedAt) / duration);
+    last = t < 1 ? flyToViewport(from, to, easeInOutCubic(t)) : end;
+    set(last);
+    if (t < 1) flight = requestAnimationFrame(step);
+  };
+  flight = requestAnimationFrame(step);
+}
+
+const pick = ({ longitude, latitude, zoom }: View): View => ({ longitude, latitude, zoom });
+
+/** Whether the map still shows the view the flight last set (kepler may round it slightly). */
+const sameView = (a: View, b: View) =>
+  Math.abs(a.longitude - b.longitude) < 1e-6 && Math.abs(a.latitude - b.latitude) < 1e-6 && Math.abs(a.zoom - b.zoom) < 1e-6;
+
+/** Centres a tower in the map beside the side panel, zooming in unless the map is already closer. */
+function flyToTower(store: KeplerStore, mapId: string, tower: { lat: number; lng: number }, panelWidth: number) {
+  const instance = read(store, mapId);
+  if (!instance) return;
+  const { width, height } = instance.mapState;
+  const zoom = Math.max(instance.mapState.zoom, TOWER_ZOOM);
+  const viewport = new WebMercatorViewport({ width, height, latitude: tower.lat, longitude: tower.lng, zoom });
+  const [longitude, latitude] = viewport.unproject([width / 2 - panelInset(instance, panelWidth) / 2, height / 2]);
+  flyTo(store, mapId, { longitude, latitude, zoom });
+}
+
+/**
+ * The down tower a layer click picked, if any: a dot in the "Towers down" layer, or a DOWN row
+ * of any other point dataset (e.g. the area card's "Towers DOWN").
+ */
+function clickedDownTower(instance: Instance, clicked: Clicked) {
+  const position = clicked.object?.position;
+  const layer = instance.visState.layers.find((l) => l.id === clicked.layer?.id);
+  if (!layer || !position || position.length < 2) return undefined;
+  const dataset = instance.visState.datasets[layer.config.dataId];
+  const row = clicked.object?.index;
+  const statusColumn = dataset?.fields.findIndex((f) => f.name === "status") ?? -1;
+  const isDown =
+    layer.config.dataId === DOWN_TOWERS_DATA_ID ||
+    (dataset !== undefined && row !== undefined && statusColumn >= 0 && dataset.dataContainer.valueAt(row, statusColumn) === "DOWN");
+  return isDown ? { lng: position[0], lat: position[1] } : undefined;
+}
+
+/** Clicking a down tower on the map flies to it, as picking it from the pill's list does. */
+function useFlyToClickedDownTower(store: KeplerStore, mapId: string, panelWidth: number) {
+  const panelWidthRef = useRef(panelWidth);
+  useEffect(() => {
+    panelWidthRef.current = panelWidth;
+  }, [panelWidth]);
+
+  useEffect(() => {
+    let last = read(store, mapId)?.visState.clicked;
+    return store.subscribe(() => {
+      const instance = read(store, mapId);
+      const clicked = instance?.visState.clicked;
+      if (!instance || clicked === last) return;
+      last = clicked;
+      const tower = clicked ? clickedDownTower(instance, clicked) : undefined;
+      if (tower) flyToTower(store, mapId, tower, panelWidthRef.current);
+    });
+  }, [store, mapId]);
+}
 
 /** The tower names in the map's "Towers down" dataset. */
 function datasetTowers(dataset: Dataset) {
@@ -150,18 +250,9 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
     () => 0,
   );
 
-  const dispatch = (action: KeplerAction) => store.dispatch(wrapTo(mapId, action));
+  useFlyToClickedDownTower(store, mapId, panelWidth);
 
-  /** Centres the tower in the map beside the side panel. */
-  const flyTo = (tower: TowerPin) => {
-    const instance = read(store, mapId);
-    if (!instance) return;
-    const { width, height } = instance.mapState;
-    const zoom = Math.max(instance.mapState.zoom, TOWER_ZOOM);
-    const viewport = new WebMercatorViewport({ width, height, latitude: tower.lat, longitude: tower.lng, zoom });
-    const [longitude, latitude] = viewport.unproject([width / 2 - panelInset(instance, panelWidth) / 2, height / 2]);
-    dispatch(updateMap({ latitude, longitude, zoom }));
-  };
+  const showTower = (tower: TowerPin) => flyToTower(store, mapId, tower, panelWidth);
 
   const [open, setOpen] = useState(false);
 
@@ -170,18 +261,26 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
     setOpen(false);
     const instance = read(store, mapId);
     if (!instance || !down?.length) return;
-    if (down.length === 1) return flyTo(down[0]);
+    if (down.length === 1) return showTower(down[0]);
     const lngs = down.map((t) => t.lng);
     const lats = down.map((t) => t.lat);
     const pad = 64;
-    dispatch(
-      fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
-        top: pad,
-        bottom: pad,
-        right: pad + 56, // kepler's map controls
-        left: pad + panelInset(instance, panelWidth),
-      }),
+    const { width, height } = instance.mapState;
+    const fitted = new WebMercatorViewport({ width, height }).fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      {
+        padding: {
+          top: pad,
+          bottom: pad,
+          right: pad + 56, // kepler's map controls
+          left: pad + panelInset(instance, panelWidth),
+        },
+      },
     );
+    flyTo(store, mapId, pick(fitted));
   };
 
   if (!status || !down) return null;
@@ -271,7 +370,7 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
                       <button
                         key={t.enodeb_name}
                         type="button"
-                        onClick={() => flyTo(t)}
+                        onClick={() => showTower(t)}
                         className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-[12px] transition-colors hover:bg-accent"
                       >
                         <Dot className="bg-red" />

@@ -16,9 +16,11 @@ import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-ic
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
 import { BasemapControl } from "./basemap-control";
 import { useChatFullscreen } from "./chat-fullscreen";
+import { PanelResizeHandle } from "./panel-resize-handle";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
 import { HermesPanel } from "./panels/hermes-panel";
+import { towerPopoverFactories } from "./tower-popover";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
@@ -107,16 +109,21 @@ function ElevateCollapseButtonFactory() {
     const { isFullscreen } = useChatFullscreen();
     if (isFullscreen) return null;
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={isOpen ? "Close panel" : "Open panel"}
-        // on phones the panel leaves only a strip of map, where kepler's map controls sit at the
-        // top; move the button to the bottom of the strip so it doesn't cover them
-        className="side-bar__close absolute top-3 left-full grid size-7 -translate-x-1 place-items-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-sm:top-auto max-sm:bottom-16"
-      >
-        <ChevronLeft className={isOpen ? "size-4" : "size-4 rotate-180"} />
-      </button>
+      <>
+        {/* kepler renders this button beside the panel whether it's open or not, so the panel's
+            resize handle rides along here */}
+        {isOpen ? <PanelResizeHandle /> : null}
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={isOpen ? "Close panel" : "Open panel"}
+          // on phones the panel leaves only a strip of map, where kepler's map controls sit at the
+          // top; move the button to the bottom of the strip so it doesn't cover them
+          className="side-bar__close absolute top-3 left-full grid size-7 -translate-x-1 place-items-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-sm:top-auto max-sm:bottom-16"
+        >
+          <ChevronLeft className={isOpen ? "size-4" : "size-4 rotate-180"} />
+        </button>
+      </>
     );
   };
   return CollapseButton;
@@ -204,4 +211,6 @@ export const KeplerGl = injectComponents([
   [CustomPanelsFactory, ElevateCustomPanelsFactory],
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
   [MapControlFactory, ElevateMapControlFactory],
+  // the tower tooltip's actions (Heal this tower, Add to chat); hides tooltips with nothing to show
+  ...towerPopoverFactories,
 ] as never);

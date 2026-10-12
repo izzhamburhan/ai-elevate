@@ -95,13 +95,17 @@ function ToolGroupRoot({
 function ToolGroupTrigger({
   count,
   active = false,
+  label: labelOverride,
   className,
   ...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
   count: number;
   active?: boolean;
+  /** Replaces the default "N tool calls" text. */
+  label?: React.ReactNode;
 }) {
-  const label = `${count} tool ${count === 1 ? "call" : "calls"}`;
+  const label =
+    labelOverride ?? `${count} tool ${count === 1 ? "call" : "calls"}`;
 
   return (
     <CollapsibleTrigger

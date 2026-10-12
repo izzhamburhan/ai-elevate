@@ -9,6 +9,7 @@ import { KeplerGl, keplerLocaleMessages } from "./kepler-panels";
 import { getTheme, useTheme } from "@/lib/theme";
 
 import { ChatFullscreenContext } from "./chat-fullscreen";
+import { MIN_PANEL_WIDTH, SidePanelWidthContext, loadPanelWidth } from "./side-panel-width";
 import { ChatMapSync } from "./chat-map-sync";
 import { DownTowerCount } from "./down-tower-count";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
@@ -16,15 +17,17 @@ import { basemapFor, useBasemapKind } from "./basemap-choice";
 import { MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { TowerPulse } from "./tower-pulse";
+import { useTrueColorHover } from "./true-color-hover";
 import { useKeplerBridge } from "./use-kepler-bridge";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
 
-const SIDE_PANEL_WIDTH = 400;
 /** kepler pads the panel by this on both sides (see `kepler-theme.ts`). */
 const SIDE_PANEL_MARGIN = keplerLightTheme.sidePanel.margin.left;
 /** Map left visible beside a narrow-screen panel, so its close button (and some map) stays on screen. */
 const COLLAPSE_GUTTER = 40;
+/** Map left visible beside a panel dragged to its widest; wider than that is the full-screen chat. */
+const MAP_PEEK = 160;
 const DEMO_GEOGRAPHY_URL = "/data/weather-demo-outline.geojson";
 
 /** Local, coarse Natural Earth context replaces remote tiles only in the opt-in pitch. */
@@ -99,15 +102,27 @@ export default function KeplerMap() {
   const [containerRef, { width, height }] = useElementSize<HTMLDivElement>();
   const theme = useTheme();
   useKeplerBridge(store, MAP_ID);
+  useTrueColorHover(store, MAP_ID);
   const [isFullscreen, setFullscreen] = useState(false);
   const fullscreen = useMemo(() => ({ isFullscreen, setFullscreen }), [isFullscreen]);
   // fullscreen stretches the side panel over the whole map; kepler animates the width change.
   // Never wider than the screen: on a phone the panel shrinks and leaves a strip of map for its
   // close button.
   const fullWidth = Math.max(0, width - 2 * SIDE_PANEL_MARGIN);
+  // the width the user dragged the panel to (panel-resize-handle.tsx), kept within the screen
+  const [preferredWidth, setPreferredWidth] = useState(loadPanelWidth);
+  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, fullWidth - MAP_PEEK);
   const sidePanelWidth = isFullscreen
     ? fullWidth
-    : Math.min(SIDE_PANEL_WIDTH, fullWidth - COLLAPSE_GUTTER);
+    : Math.min(preferredWidth, maxPanelWidth, fullWidth - COLLAPSE_GUTTER);
+  const panelWidth = useMemo(
+    () => ({
+      width: sidePanelWidth,
+      maxWidth: maxPanelWidth,
+      setWidth: (next: number) => setPreferredWidth(Math.min(Math.max(next, MIN_PANEL_WIDTH), maxPanelWidth)),
+    }),
+    [sidePanelWidth, maxPanelWidth],
+  );
 
   // swap the basemap whenever the app theme flips or the user picks the other basemap
   const basemapKind = useBasemapKind();
@@ -133,24 +148,26 @@ export default function KeplerMap() {
         <Provider store={store}>
           <ChatProvider>
             <ChatFullscreenContext.Provider value={fullscreen}>
-              {/* each chat has its own map, starting from the sample data */}
-              <ChatMapSync store={store} mapId={MAP_ID} />
-              <KeplerGl
-                id={MAP_ID}
-                // keep the instance state on unmount: Strict Mode / Fast Refresh remounts would
-                // otherwise delete it and crash kepler's selectors ("reading 'visState'")
-                mint={false}
-                width={width}
-                height={height}
-                theme={theme === "dark" ? keplerDarkTheme : keplerLightTheme}
-                appName="Elevate"
-                version="Map"
-                sidePanelWidth={sidePanelWidth}
-                localeMessages={keplerLocaleMessages}
-                getMapboxRef={announceStyleOnFirstIdle}
-              />
-              <TowerPulse store={store} mapId={MAP_ID} />
-              <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
+              <SidePanelWidthContext.Provider value={panelWidth}>
+                {/* each chat has its own map, starting from the sample data */}
+                <ChatMapSync store={store} mapId={MAP_ID} />
+                <KeplerGl
+                  id={MAP_ID}
+                  // keep the instance state on unmount: Strict Mode / Fast Refresh remounts would
+                  // otherwise delete it and crash kepler's selectors ("reading 'visState'")
+                  mint={false}
+                  width={width}
+                  height={height}
+                  theme={theme === "dark" ? keplerDarkTheme : keplerLightTheme}
+                  appName="Elevate"
+                  version="Map"
+                  sidePanelWidth={sidePanelWidth}
+                  localeMessages={keplerLocaleMessages}
+                  getMapboxRef={announceStyleOnFirstIdle}
+                />
+                <TowerPulse store={store} mapId={MAP_ID} />
+                <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
+              </SidePanelWidthContext.Provider>
             </ChatFullscreenContext.Provider>
           </ChatProvider>
         </Provider>
