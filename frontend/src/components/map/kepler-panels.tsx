@@ -19,6 +19,7 @@ import { useChatFullscreen } from "./chat-fullscreen";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
 import { HermesPanel } from "./panels/hermes-panel";
+import { towerPopoverFactories } from "./tower-popover";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
@@ -204,4 +205,6 @@ export const KeplerGl = injectComponents([
   [CustomPanelsFactory, ElevateCustomPanelsFactory],
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
   [MapControlFactory, ElevateMapControlFactory],
+  // the tower tooltip's actions (Heal this tower, Add to chat)
+  ...towerPopoverFactories,
 ] as never);

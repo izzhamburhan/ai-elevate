@@ -16,6 +16,7 @@ import { basemapFor, useBasemapKind } from "./basemap-choice";
 import { MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { TowerPulse } from "./tower-pulse";
+import { useTrueColorHover } from "./true-color-hover";
 import { useKeplerBridge } from "./use-kepler-bridge";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
@@ -99,6 +100,7 @@ export default function KeplerMap() {
   const [containerRef, { width, height }] = useElementSize<HTMLDivElement>();
   const theme = useTheme();
   useKeplerBridge(store, MAP_ID);
+  useTrueColorHover(store, MAP_ID);
   const [isFullscreen, setFullscreen] = useState(false);
   const fullscreen = useMemo(() => ({ isFullscreen, setFullscreen }), [isFullscreen]);
   // fullscreen stretches the side panel over the whole map; kepler animates the width change.

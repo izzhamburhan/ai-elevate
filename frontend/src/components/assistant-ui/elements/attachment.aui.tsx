@@ -12,6 +12,7 @@ import {
   FileText,
   Loader2Icon,
   AlertCircleIcon,
+  RadioTower,
 } from "lucide-react";
 import {
   AttachmentPrimitive,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useAttachmentSrc } from "@/hooks/use-attachment-src";
+import { readTowerContext, TOWER_MEDIA_TYPE } from "@/lib/menara/tower-context";
 import { cn } from "@/lib/utils";
 
 type AttachmentPreviewProps = {
@@ -237,6 +239,55 @@ const AttachmentUI: FC = () => {
   );
 };
 
+/** A tower picked on the map (its live facts go to the model as text): a chip, not a file tile. */
+const TowerAttachmentUI: FC = () => {
+  const aui = useAui();
+  const isComposer = aui.attachment.source !== "message";
+  const name = useAuiState((s) => s.attachment.name);
+  const text = useAuiState((s) =>
+    (s.attachment.content ?? [])
+      .map((part) => (part.type === "file" ? readTowerContext(part.data) : ""))
+      .join("\n"),
+  );
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <AttachmentPrimitive.Root className="aui-attachment-root relative animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none">
+          <TooltipTrigger asChild>
+            <div
+              tabIndex={0}
+              aria-label={`Tower ${name} added as context`}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-full border border-red/30 bg-red/10 pl-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
+                isComposer ? "pr-7" : "pr-2.5",
+              )}
+            >
+              <RadioTower className="size-3.5 text-red" />
+              <span className="font-mono font-medium">{name}</span>
+              <span className="text-muted-foreground">Tower</span>
+            </div>
+          </TooltipTrigger>
+          {isComposer && (
+            <AttachmentPrimitive.Remove asChild>
+              <TooltipIconButton
+                tooltip={`Remove ${name}`}
+                side="top"
+                className="absolute end-1 top-1/2 size-5 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <XIcon className="size-3" />
+              </TooltipIconButton>
+            </AttachmentPrimitive.Remove>
+          )}
+        </AttachmentPrimitive.Root>
+        <TooltipContent side="top" className="max-w-xs text-[11px] leading-4 whitespace-pre-line">
+          {text}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const AttachmentRemove: FC<{ name: string }> = ({ name }) => {
   return (
     <AttachmentPrimitive.Remove asChild>
@@ -255,7 +306,9 @@ export const UserMessageAttachments: FC = () => {
   return (
     <div className="aui-user-message-attachments-end col-span-full col-start-1 row-start-1 flex w-full flex-row justify-end gap-2 empty:hidden">
       <MessagePrimitive.Attachments>
-        {() => <AttachmentUI />}
+        {({ attachment }) =>
+          attachment.contentType === TOWER_MEDIA_TYPE ? <TowerAttachmentUI /> : <AttachmentUI />
+        }
       </MessagePrimitive.Attachments>
     </div>
   );
@@ -265,7 +318,9 @@ export const ComposerAttachments: FC = () => {
   return (
     <div className="aui-composer-attachments flex w-full flex-row items-center gap-2 overflow-x-auto empty:hidden">
       <ComposerPrimitive.Attachments>
-        {() => <AttachmentUI />}
+        {({ attachment }) =>
+          attachment.contentType === TOWER_MEDIA_TYPE ? <TowerAttachmentUI /> : <AttachmentUI />
+        }
       </ComposerPrimitive.Attachments>
     </div>
   );
