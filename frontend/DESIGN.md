@@ -150,12 +150,15 @@ Show status with a word or an icon as well as the color. Color must never be the
 The map follows the Menara command center's map (the `menara-command-tower` repo, its
 `static/index.html`).
 
-**Basemaps** (`components/map/basemaps.ts`): OpenStreetMap's standard raster tiles.
+**Basemaps** (`components/map/basemaps.ts`): Protomaps' vector styles over self-hosted
+OpenStreetMap tiles (`npm run basemap`, see the README), so roads and labels stay sharp at any zoom.
 
-- `elevate-dark`: the tiles inverted, hue-rotated 195°, dimmed and desaturated, which gives dark
-  green land and blue-grey sea. The reference does this with a CSS filter. Here it is done with
-  MapLibre raster paint, so the data layers on top are never filtered.
-- `elevate-light`: the same tiles, desaturated.
+- `elevate-dark`: warm near-black land, blue-grey sea and dark green woods. `elevate-light`: the
+  same map, quiet and desaturated. Both are Protomaps' flavors with colors sampled from the raster
+  fallback, so the two read as the same map.
+- Without the tile files, the same ids fall back to OpenStreetMap's standard raster tiles. Its
+  dark map is the tiles inverted, hue-rotated 195°, dimmed and desaturated, as the reference does
+  with a CSS filter. Here it is MapLibre raster paint, so the data layers on top are never filtered.
 - The theme picks one (`BASEMAP_FOR_THEME`). Chats saved on the old CARTO basemaps switch to them
   too.
 - kepler misses the basemap's credit on first load, so `kepler-map.tsx` re-announces the style once
