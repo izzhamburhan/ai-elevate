@@ -10,6 +10,7 @@ import { getTheme, useTheme } from "@/lib/theme";
 
 import { ChatFullscreenContext } from "./chat-fullscreen";
 import { ChatMapSync } from "./chat-map-sync";
+import { DownTowerCount } from "./down-tower-count";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { BASEMAP_FOR_THEME, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
@@ -147,6 +148,7 @@ export default function KeplerMap() {
                 getMapboxRef={announceStyleOnFirstIdle}
               />
               <TowerPulse store={store} mapId={MAP_ID} />
+              <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
             </ChatFullscreenContext.Provider>
           </ChatProvider>
         </Provider>

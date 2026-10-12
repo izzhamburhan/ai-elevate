@@ -184,6 +184,12 @@ Rules:
   with only the towers that are DOWN, as reported by the tower MCP, each drawn with the down-tower
   marker. The markers follow the "Towers down" layer: hide it and they go. With reduced motion,
   the rings hold still.
+- **Network status pill** (`down-tower-count.tsx`): at the map's top right, beside kepler's map
+  controls. It shows towers down (red) and how many the map shows, towers degraded (amber), the
+  tower MCP's clock in MYT and a "Synthetic" tag. `tower-status.ts` refreshes it every minute. When
+  a refresh finds new outages, the pill pulses and tags them "New". The same refresh rewrites the
+  "Towers down" rows on the open map, including a saved chat's map. The pill opens a list by state,
+  where a tower flies the map to it and "Show all down towers" fits them beside the side panel.
 - `kepler-theme.ts` repeats the palette as hex, because kepler does color math on its theme values.
   When you change the palette, update that file too.
 - Some kepler styles have no theme key (for example the panel title's weight and letter-spacing).
