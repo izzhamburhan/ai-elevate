@@ -12,4 +12,6 @@ Latest upstream integration preserves the marketing landing page, `/workspace`, 
 
 Publication requalification also integrates upstream `ef63f32a31e7940ea1617a319dc501387038d6d9` unchanged, preserving real-outage default healing and explicit flood-demo selection. A new isolated clean install, all 54 tests, lint/production build/typecheck and actual merged-app agent/Weather MCP/Kepler checks pass. This is an experimental historical-replay hackathon MVP; publication does not resolve the documented licensing or forecasting-validation limitations.
 
+The final pre-push upstream snapshot is `97e0b22393ddfb4a05b39eb190f9de9e4d0e6fe0`: marketing PR#2, its local hero asset and demo sign-in/sign-up pages are preserved exactly. Affected frontend tests/lint/build/typecheck pass again (21 route entries), as do the new route/asset and actual replay-proxy smoke checks. Backend/service sources and their 46 passing tests are unchanged; upstream demo authentication is not represented as production authentication.
+
 Reports: [implementation and acceptance evidence](WEATHER_ML_IMPLEMENTATION.md), [chronological evaluation and baseline comparisons](WEATHER_ML_EVALUATION.md), and [license audit and owner recommendation](WEATHER_LICENSE_AUDIT.md).

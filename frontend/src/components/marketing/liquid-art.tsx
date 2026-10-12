@@ -75,34 +75,60 @@ void main() {
   gl_FragColor = vec4(min(v, 1.0), 0.0, 0.0, 1.0);
 }`;
 
-/** Composite: warp the art inside the trail, split channels, and paint thin-film rims. */
-const COMPOSITE = `${NOISE}
-uniform sampler2D u_scene;
+/** Shared by both passes: the trail's oily mask, thin-film colour, rims and dark cores. */
+const SLICK = `${NOISE}
 uniform sampler2D u_trail;
 uniform float u_aspect;
 uniform float u_time;
-void main() {
-  float t = texture2D(u_trail, v_uv).r;
-  vec2 p = v_uv * vec2(u_aspect, 1.0);
-  float n = fbm(p * 3.0 + u_time * 0.08);
+struct Slick {
+  vec2 p;
+  float m;
+  float rim;
+  float core;
+  vec3 film;
+};
+Slick slick(vec2 uv) {
+  Slick s;
+  float t = texture2D(u_trail, uv).r;
+  s.p = uv * vec2(u_aspect, 1.0);
+  float n = fbm(s.p * 3.0 + u_time * 0.08);
   // High-frequency noise breaks the trail into oily islands instead of one smooth tube.
-  float grain = fbm(p * 9.0 - u_time * 0.12);
-  float m = smoothstep(0.12, 0.62, t * (0.25 + n * 0.8 + grain * 0.9));
-  vec2 warp = (vec2(fbm(p * 4.0 + 3.1 + u_time * 0.1), fbm(p * 4.0 - 5.7 - u_time * 0.1)) - 0.5) * 0.15 * m;
+  float grain = fbm(s.p * 9.0 - u_time * 0.12);
+  s.m = smoothstep(0.12, 0.62, t * (0.25 + n * 0.8 + grain * 0.9));
+  // Thin-film colour: hue cycles with local "thickness", so it shifts along the rims.
+  float phase = grain * 4.0 + n * 2.0 + t * 3.0 + u_time * 0.1;
+  s.film = 0.5 + 0.5 * cos(6.28318 * (phase + vec3(0.0, 0.33, 0.67)));
+  s.rim = smoothstep(0.02, 0.22, s.m) * (1.0 - smoothstep(0.22, 0.6, s.m));
+  s.core = smoothstep(0.45, 0.95, s.m);
+  return s;
+}`;
+
+/** Behind the content: warp the art inside the trail, split channels, and paint the slick. */
+const COMPOSITE = `${SLICK}
+uniform sampler2D u_scene;
+void main() {
+  Slick s = slick(v_uv);
+  vec2 warp = (vec2(fbm(s.p * 4.0 + 3.1 + u_time * 0.1), fbm(s.p * 4.0 - 5.7 - u_time * 0.1)) - 0.5) * 0.15 * s.m;
   vec3 scene = vec3(
     texture2D(u_scene, v_uv + warp).r,
     texture2D(u_scene, v_uv + warp * 1.3).g,
     texture2D(u_scene, v_uv + warp * 1.6).b
   );
-  // Thin-film colour: hue cycles with local "thickness", so it shifts along the rims.
-  float phase = grain * 4.0 + n * 2.0 + t * 3.0 + u_time * 0.1;
-  vec3 film = 0.5 + 0.5 * cos(6.28318 * (phase + vec3(0.0, 0.33, 0.67)));
-  float rim = smoothstep(0.02, 0.22, m) * (1.0 - smoothstep(0.22, 0.6, m));
-  float core = smoothstep(0.45, 0.95, m);
-  vec3 col = mix(scene, scene * 0.35 + film * 0.75, rim);
-  col = mix(col, scene * 0.4 + film * vec3(0.1, 0.16, 0.36), core * 0.8);
+  vec3 col = mix(scene, scene * 0.35 + s.film * 0.75, s.rim);
+  col = mix(col, scene * 0.4 + s.film * vec3(0.1, 0.16, 0.36), s.core * 0.8);
   gl_FragColor = vec4(col, 1.0);
 }`;
+
+/** Above the content: the slick alone, premultiplied, transparent wherever the trail is empty. */
+const SHEEN = `${SLICK}
+void main() {
+  Slick s = slick(v_uv);
+  float a = s.rim * 0.8 + s.core * 0.45;
+  gl_FragColor = vec4(s.film * s.rim * 0.8 + vec3(0.03, 0.03, 0.08) * s.core * 0.45, a);
+}`;
+
+/** Pointer over these never stamps new liquid, so it cannot swallow what you are about to click. */
+const CONTROLS = "a, button, input, select, textarea, label, summary, [role='button']";
 
 type Target = { tex: WebGLTexture; fbo: WebGLFramebuffer };
 
@@ -150,8 +176,27 @@ function target(gl: WebGLRenderingContext, w: number, h: number): Target {
   return { tex, fbo };
 }
 
-/** Rasterise the live SVG at the canvas's pixel size (its own preserveAspectRatio handles the crop). */
-async function rasterise(svg: SVGSVGElement, w: number, h: number) {
+/**
+ * Rasterise the art at the canvas's pixel size. A photo is cover-cropped the way CSS shows it
+ * (object-fit: cover, honouring its object-position); an SVG crops itself via preserveAspectRatio.
+ */
+async function rasterise(host: HTMLElement, w: number, h: number): Promise<TexImageSource> {
+  const photo = host.querySelector("img");
+  if (photo) {
+    await photo.decode();
+    const out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    const scale = Math.max(w / photo.naturalWidth, h / photo.naturalHeight);
+    const dw = photo.naturalWidth * scale;
+    const dh = photo.naturalHeight * scale;
+    const [px, py] = getComputedStyle(photo)
+      .objectPosition.split(" ")
+      .map((v) => (v.endsWith("%") ? parseFloat(v) / 100 : 0.5));
+    out.getContext("2d")!.drawImage(photo, (w - dw) * px, (h - dh) * py, dw, dh);
+    return out;
+  }
+  const svg = host.querySelector("svg")!;
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("width", String(w));
   clone.setAttribute("height", String(h));
@@ -162,14 +207,19 @@ async function rasterise(svg: SVGSVGElement, w: number, h: number) {
   return img;
 }
 
-/** Starts the effect; returns a cleanup function. Throws if WebGL is unavailable. */
-function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement) {
-  const svg = host.querySelector("svg");
-  const gl = canvas.getContext("webgl", { alpha: false, antialias: false, premultipliedAlpha: false });
-  if (!svg || !gl) throw new Error("webgl unavailable");
+/**
+ * Starts the effect; returns a cleanup function. Throws if WebGL is unavailable. With `overlay`,
+ * each frame also renders the sheen pass and copies it onto that 2D canvas, which sits above the
+ * page content; one WebGL context drives both layers, so they stay in step.
+ */
+function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement, overlay?: HTMLCanvasElement) {
+  const gl = canvas.getContext("webgl", { antialias: false });
+  const sheenCtx = overlay?.getContext("2d") ?? null;
+  if (!host.querySelector("img, svg") || !gl) throw new Error("webgl unavailable");
 
   const trailProg = program(gl, TRAIL);
   const compProg = program(gl, COMPOSITE);
+  const sheenProg = overlay ? program(gl, SHEEN) : null;
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -196,10 +246,14 @@ function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement) {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const w = Math.max(1, Math.round(host.clientWidth * dpr));
     const h = Math.max(1, Math.round(host.clientHeight * dpr));
-    const img = await rasterise(svg, w, h);
+    const img = await rasterise(host, w, h);
     if (disposed) return;
     canvas.width = w;
     canvas.height = h;
+    if (overlay) {
+      overlay.width = w;
+      overlay.height = h;
+    }
     gl.bindTexture(gl.TEXTURE_2D, scene);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
@@ -235,9 +289,25 @@ function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     trails = [trails[1], trails[0]];
 
-    gl.useProgram(compProg.p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
+
+    // Sheen first: draw it into the WebGL canvas, copy it to the overlay, then draw the scene over it.
+    if (sheenProg && sheenCtx && overlay) {
+      gl.useProgram(sheenProg.p);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, trails[0].tex);
+      gl.uniform1i(sheenProg.u("u_trail"), 0);
+      gl.uniform1f(sheenProg.u("u_aspect"), aspect);
+      gl.uniform1f(sheenProg.u("u_time"), time);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      sheenCtx.clearRect(0, 0, overlay.width, overlay.height);
+      sheenCtx.drawImage(canvas, 0, 0);
+    }
+
+    gl.useProgram(compProg.p);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, scene);
     gl.uniform1i(compProg.u("u_scene"), 0);
@@ -263,6 +333,10 @@ function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement) {
 
   const onMove = (e: PointerEvent) => {
     if (!inView) return;
+    if (e.target instanceof Element && e.target.closest(CONTROLS)) {
+      last = null;
+      return;
+    }
     const r = host.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
     const y = 1 - (e.clientY - r.top) / r.height;
@@ -306,29 +380,43 @@ function startLiquid(host: HTMLElement, canvas: HTMLCanvasElement) {
   };
 }
 
-/** Wraps server-rendered SVG art and lays the liquid cursor canvas over it. */
-export function LiquidArt({ children, className }: { children: ReactNode; className?: string }) {
+type LiquidArtProps = {
+  children: ReactNode;
+  className?: string;
+  /**
+   * When set, the oil-slick sheen is also painted on a second canvas with these classes, so it
+   * can sit above the page content. Give it the same box (and animation) as `className`.
+   */
+  overlayClassName?: string;
+};
+
+/** Wraps server-rendered art (SVG or a photo) and lays the liquid cursor canvas over it. */
+export function LiquidArt({ children, className, overlayClassName }: LiquidArtProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const reduced = usePrefersReducedMotion();
 
   useEffect(() => {
     if (reduced || !hostRef.current || !canvasRef.current) return;
     try {
-      return startLiquid(hostRef.current, canvasRef.current);
+      return startLiquid(hostRef.current, canvasRef.current, overlayRef.current ?? undefined);
     } catch {
-      // No WebGL: the plain SVG stays visible.
+      // No WebGL: the plain art stays visible.
     }
   }, [reduced]);
 
   return (
-    <div ref={hostRef} className={cn("overflow-hidden", className)}>
-      {children}
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-0 transition-opacity duration-300 data-[ready]:opacity-100"
-      />
-    </div>
+    <>
+      <div ref={hostRef} className={cn("overflow-hidden", className)}>
+        {children}
+        <canvas
+          ref={canvasRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-0 transition-opacity duration-300 data-[ready]:opacity-100"
+        />
+      </div>
+      {overlayClassName && <canvas ref={overlayRef} aria-hidden="true" className={cn("pointer-events-none", overlayClassName)} />}
+    </>
   );
 }

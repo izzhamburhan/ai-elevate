@@ -7,8 +7,8 @@ import { SelfHealDemo } from "./self-heal-demo";
 
 const STAGES = ["Detect", "Diagnose", "Simulate", "Approve", "Apply", "Verify", "Roll back", "Recover"];
 
-/** Still frame of the Self-heal card, used as the play card's poster. */
-function Poster() {
+/** Still frame of the Self-heal card: the play card's poster, also used on the sign-in art panel. */
+export function SelfHealPoster() {
   return (
     <span className="block h-full rounded-xl border border-white/15 bg-[#1c1927]/80 p-3 backdrop-blur-md">
       <span className="flex items-center justify-between text-[11px] text-mk-fg">
@@ -51,7 +51,7 @@ export function HeroDemo({ variant }: { variant: "card" | "button" }) {
       {variant === "card" ? (
         <button type="button" onClick={show} aria-haspopup="dialog" className="group block w-[320px] rounded-xl text-left">
           <span className="relative block aspect-video">
-            <Poster />
+            <SelfHealPoster />
             <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/25 transition-colors group-hover:bg-black/10">
               <span className="grid size-14 place-items-center rounded-xl bg-mk-brand text-mk-brand-fg shadow-lg transition-transform group-hover:scale-110">
                 <Play className="size-5 fill-current" aria-hidden="true" />
