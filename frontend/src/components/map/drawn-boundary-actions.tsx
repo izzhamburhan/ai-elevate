@@ -112,7 +112,8 @@ export function AttachBoundaryButton() {
     s.thread.composer.attachments.some((a) => a.contentType === BOUNDARY_MEDIA_TYPE),
   );
 
-  if (!activeFeature) return null;
+  // once attached, the composer's attachment chip already shows the boundary
+  if (!activeFeature || isAttached) return null;
 
   const metrics = extractFeatureMetrics(activeFeature);
   const label = formatBoundaryLabel(metrics);
@@ -124,21 +125,16 @@ export function AttachBoundaryButton() {
 
   return (
     <TooltipIconButton
-      tooltip={isAttached ? "Boundary attached to chat" : `Attach drawn boundary (${label})`}
+      tooltip={`Attach drawn boundary (${label})`}
       side="bottom"
       variant="ghost"
       size="sm"
       onClick={handleAttach}
-      disabled={isAttached}
-      className={cn(
-        "h-7 gap-1.5 rounded-full px-2 text-[12px] transition-colors",
-        isAttached
-          ? "text-sky-400 cursor-default opacity-80"
-          : "text-muted-foreground hover:bg-sky-500/15 hover:text-sky-300",
-      )}
+      // TooltipIconButton is a fixed square (size-6); let this labelled button size to its content
+      className="h-7 w-auto shrink-0 gap-1.5 rounded-full px-2 text-[12px] whitespace-nowrap text-muted-foreground transition-colors hover:bg-sky-500/15 hover:text-sky-300"
     >
-      {isAttached ? <Check className="size-3.5 text-sky-400" /> : <Shapes className="size-3.5 text-sky-400" />}
-      <span className="font-mono text-[11px]">{isAttached ? "Boundary attached" : "Attach area"}</span>
+      <Shapes className="size-3.5 text-sky-400" />
+      <span className="font-mono text-[11px]">Attach area</span>
     </TooltipIconButton>
   );
 }
