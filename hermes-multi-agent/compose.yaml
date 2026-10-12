@@ -1,0 +1,46 @@
+name: ai-elevate-hermes
+services:
+  hermes:
+    build: .
+    image: ai-elevate-hermes:0.1.0
+    ports:
+      - "127.0.0.1:${HERMES_HOST_PORT:-8011}:8011"
+    environment:
+      HERMES_HOME: /state
+      HERMES_STATE_DIR: /state
+      HERMES_PROFILE_TEMPLATES: /app/profiles
+      HERMES_OLLAMA_BASE_URL: ${HERMES_OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      HERMES_MODEL: ${HERMES_MODEL:-qwen3.5:9b}
+      HERMES_CONTEXT_LENGTH: ${HERMES_CONTEXT_LENGTH:-65536}
+      HERMES_MAX_ITERATIONS: ${HERMES_MAX_ITERATIONS:-8}
+      HERMES_TASK_TIMEOUT_SECONDS: ${HERMES_TASK_TIMEOUT_SECONDS:-360}
+      HERMES_INVESTIGATION_TIMEOUT_SECONDS: ${HERMES_INVESTIGATION_TIMEOUT_SECONDS:-1080}
+      NETOPS_MCP_URL: ${NETOPS_MCP_URL:-http://host.docker.internal:8000/mcp}
+      WEATHER_MCP_URL: ${WEATHER_MCP_URL:-http://host.docker.internal:8002/mcp}
+    volumes:
+      - state:/state
+    restart: unless-stopped
+    init: true
+    cpus: 2
+    mem_limit: 1536m
+    pids_limit: 192
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+volumes:
+  state:

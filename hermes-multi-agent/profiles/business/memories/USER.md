@@ -1,0 +1,1 @@
+The user requests believable hackathon scenarios using existing identifiers. Dedicated business and footfall predictive models belong to another developer. Preserve existing datasets and clearly label assumptions.

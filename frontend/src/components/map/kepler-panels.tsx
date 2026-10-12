@@ -9,19 +9,21 @@ import {
   SidePanelFactory,
   injectComponents,
 } from "@kepler.gl/components";
-import { ChevronLeft, CloudRain, Maximize2, MessageSquare, Minimize2 } from "lucide-react";
+import { Bot, ChevronLeft, CloudRain, Maximize2, MessageSquare, Minimize2 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
 import { useChatFullscreen } from "./chat-fullscreen";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
+import { HermesPanel } from "./panels/hermes-panel";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
   en: {
     "sidebar.panels.assistant": "Assistant",
     "sidebar.panels.weather": "Weather",
+    "sidebar.panels.hermes": "Agents",
   },
 };
 
@@ -37,6 +39,12 @@ const customPanels = [
     label: "sidebar.panels.weather",
     iconComponent: (props: { height?: string }) => <CloudRain size={props.height ?? 18} />,
     component: WeatherPanel,
+  },
+  {
+    id: "hermes",
+    label: "sidebar.panels.hermes",
+    iconComponent: (props: { height?: string }) => <Bot size={props.height ?? 18} />,
+    component: HermesPanel,
   },
 ];
 

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:weather": "node --experimental-strip-types --test tests/weather-*.test.mjs",
+    "test:hermes": "node --experimental-strip-types --test tests/hermes-*.test.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {
