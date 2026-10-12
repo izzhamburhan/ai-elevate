@@ -183,9 +183,16 @@ def validate_job(job: Any, expected_agent: str) -> dict[str, Any]:
         elif agent == "business":
             evidence[agent] = validate_evidence(relevant, BUSINESS_TOOLS, "netops")
     points = validate_geojson(job.get("geojson"))
+    feasibility = None
+    if expected_agent == "hypothesis":
+        feasibility = job.get("feasibility")
+        require(isinstance(feasibility, list) and feasibility and all(v.get("label") in {"supported", "supported with risk", "blocked until repaired", "not validated"} for v in feasibility),
+                "Discovery lacks computed feasibility verdicts")
+        feasibility = {v["opportunity_id"]: v["label"] for v in feasibility}
+    contradicted = [warning for warning in job.get("warnings", []) if warning.startswith("Report contradicts computed feasibility")]
     ungrounded = [warning for task in tasks for warning in task.get("warnings", []) if warning.startswith("Report names tools this task did not execute")]
     return {"investigation_id": job["investigation_id"], "agent_id": expected_agent, "status": job["status"], "task_agents": sorted(by_agent), "successful_tools": evidence, "map_points": points,
-            "ungrounded_tool_claims": ungrounded,
+            "ungrounded_tool_claims": ungrounded, "feasibility": feasibility, "feasibility_contradictions": contradicted,
             "hermes_profiles": {task["agent_id"]: task.get("runtime") for task in tasks if task.get("status") == "completed"}}
 
 

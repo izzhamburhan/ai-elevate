@@ -9,11 +9,11 @@ For any Selangor/Shah Alam rainfall-exposure or network-health request (Shah Ala
 
 1. `get_sites(technology="4g", cluster="Shah Alam", page_size=3)`. Use page_size 3, not a larger page.
 2. Copy an exact returned `site_id` into `get_ran_kpi(level="site", site_id=<returned ID>, kpi="dl_prb_utilization,dl_user_throughput,cell_availability", technology="4g", start_date="2026-09-25", end_date="2026-09-25")`.
-3. Always call `get_ntt_tickets(technology="4g", site_id=<the same returned IDs>, start_date="2026-09-25", end_date="2026-09-26", page_size=10)` before stating anything about incidents.
+3. Always call `get_ntt_tickets(technology="4g", current_lat=3.07006, current_long=101.518799, radius=3, status="all", start_date="2026-09-25", end_date="2026-09-26", page_size=20)` (Shah Alam centre) before stating anything about incidents, and report only tickets whose `site_id` is one of the returned IDs. `get_ntt_tickets` accepts only ONE site_id; a comma list silently matches nothing, so use the radius for several sites.
 
 Do not pass a `site_name` such as `CB5348_SHAHALAM` where `site_id` such as the source-confirmed `CB5348` is required. Do not guess unsupported `throughput`, `latency`, or `packet_loss` KPI names. Do not request hourly granularity because the existing service supplies daily/weekly/monthly records. Report the actual daily evidence and its limitations, then stop instead of repeating diagnosis calls. You have no weather tools; weather analysis is the Forecast specialist's task.
 
-For a feasibility validation from the Business Hypothesis agent that lists exact Site_IDs, make exactly two calls: one `get_ran_kpi` and one `get_ntt_tickets`, each with ALL the Site_IDs joined by commas in a single `site_id` string (for example `site_id="SJ9230,SJ4834,SM4266"`), using the dates it specifies. Never call a tool once per site. Report the values per Site_ID exactly as returned (flag availability below 99.5% and PRB at or above 80%) without adding regions or locations the tools did not return, then stop. Do not call `get_sites` first.
+For a feasibility validation from the Business Hypothesis agent that lists exact Site_IDs, make one `get_ran_kpi` call with ALL the Site_IDs joined by commas in a single `site_id` string (for example `site_id="SJ9230,SJ4834,SM4266"`), then the `get_ntt_tickets` radius calls it specifies (one per area, `current_lat`/`current_long`/`radius`, `status="all"`), using the dates it specifies. Never call get_ran_kpi once per site. Report the values per Site_ID exactly as returned (flag availability below 99.5% and PRB at or above 80%) without adding regions or locations the tools did not return, then stop. Do not call `get_sites` first.
 
 For other investigations:
 

@@ -19,6 +19,7 @@ import uvicorn
 from elevate_hermes import HERMES_VERSION, HERMES_REVISION
 from elevate_hermes.config import AGENTS, DELEGATION, NAMES, Settings
 from elevate_hermes.contracts import InvestigationRequest, DelegationRequest, source_summary, delegation_evidence, unexecuted_tool_claims
+from elevate_hermes import feasibility
 from elevate_hermes.initialize import initialize_profiles
 from elevate_hermes.mcp_access import AGENT_TOOL_ALLOWLISTS
 from elevate_hermes.store import Store, now, source_geojson
@@ -171,6 +172,12 @@ class Runtime:
                                            error=f"{NAMES[current['agent_id']]} did not execute an actual specialist. No delegated findings are verified.")
                         elif any(child["status"] != "completed" for child in children) and current["status"] == "completed":
                             current["status"] = "partial"
+                    if current["agent_id"] == "hypothesis":
+                        # Computed from the Engineer's ledger calls; the agent's wording never overrides it.
+                        current["feasibility"] = feasibility.from_tasks(current["tasks"], task["task_id"])
+                        if current["feasibility"]:
+                            for issue in feasibility.contradictions(task.get("summary") or "", current["feasibility"]):
+                                current["warnings"].append(f"Report contradicts computed feasibility ({issue}); the computed verdict is authoritative.")
                     current["sources"] = [source for child in current["tasks"] for source in child["sources"]]
                     current["warnings"] += [warning for child in current["tasks"] for warning in child["warnings"]]
                     current["warnings"] = list(dict.fromkeys(current["warnings"]))
@@ -277,8 +284,14 @@ def build(settings: Settings | None = None) -> FastAPI:
         finally:
             runtime.child_tasks.get(body.investigation_id, set()).discard(child)
         # Explicit findings exchange excludes each specialist's private memory/session contents.
-        return {**{key: specialist.get(key) for key in ("task_id", "agent_id", "status", "summary", "sources", "warnings", "error", "runtime")},
-                "evidence": delegation_evidence(specialist["tool_calls"])}
+        response = {**{key: specialist.get(key) for key in ("task_id", "agent_id", "status", "summary", "sources", "warnings", "error", "runtime")},
+                    "evidence": delegation_evidence(specialist["tool_calls"])}
+        if task["agent_id"] == "hypothesis":
+            verdicts = feasibility.from_tasks(runtime.store.get(body.investigation_id)["tasks"], body.parent_task_id)
+            if verdicts:
+                response["computed_feasibility"] = {"rules": feasibility.RULES, "instruction": "Copy each label exactly; explain it, never change it.",
+                                                    "verdicts": [{k: v[k] for k in ("rank", "opportunity_id", "label", "reasons")} for v in verdicts]}
+        return response
 
     return app
 

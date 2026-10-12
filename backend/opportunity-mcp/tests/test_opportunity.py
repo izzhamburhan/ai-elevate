@@ -54,6 +54,8 @@ def test_discovery_is_deterministic_explainable_and_never_claims_revenue(og):
     for o in opportunities:
         assert o["synthetic"] is True and o["why"] and o["what_tm_should_do"] and o["risks"]
         assert 0 < o["confidence"] <= 0.85
+        assert all("synthetic" in line.lower() for line in o["why"])  # every SME, event, footfall and serviceability figure is labelled
+        assert o["validation_status"] == "graph-ranked; not validated by agents"
         low, high = o["commercial_potential"]["indicative_monthly_recurring_rm"]
         assert 0 <= low <= high and "Not verified revenue" in o["commercial_potential"]["label"]
     kinds = {f["properties"]["kind"] for f in first["geojson"]["features"]}

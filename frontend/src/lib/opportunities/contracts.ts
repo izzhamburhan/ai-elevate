@@ -71,3 +71,46 @@ export function discoveryBounds(discovery: Discovery, pad = 0.6): [number, numbe
   const lngs = points.map((p) => p[0]), lats = points.map((p) => p[1]);
   return [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad];
 }
+
+/** Feasibility verdicts Hermes computes from the Engineer's NetOps results (authoritative; agent prose only explains them). */
+export const feasibilityVerdictSchema = z.object({
+  opportunity_id: z.string(),
+  rank: z.number().int(),
+  label: z.enum(["supported", "supported with risk", "blocked until repaired", "not validated"]),
+  reasons: z.array(z.string()),
+}).passthrough();
+export type FeasibilityVerdict = z.infer<typeof feasibilityVerdictSchema>;
+
+export type ValidationState =
+  | { state: "not_started" }
+  | { state: "running"; investigationId: string }
+  | { state: "failed"; investigationId: string; error?: string | null }
+  | { state: "validated"; investigationId: string; completedAt: string; verdicts: FeasibilityVerdict[] };
+
+type JobLike = {
+  investigation_id: string; agent_id: string; status: string; updated_at: string; error?: string | null;
+  feasibility?: unknown; tasks: { task_id: string; agent_id: string; tool_calls?: { tool: string; ok?: boolean; data?: unknown }[] }[];
+};
+
+/** The graph discovery the Hypothesis agent itself retrieved in a run (from the ledger), or null. */
+export function discoveryFromJob(job: JobLike): Discovery | null {
+  const calls = job.tasks.filter((t) => t.agent_id === "hypothesis").flatMap((t) => t.tool_calls ?? []);
+  const call = calls.filter((c) => c.tool === "opportunity_discover" && c.ok === true).at(-1);
+  const parsed = discoverySchema.safeParse(call?.data);
+  return parsed.success ? parsed.data : null;
+}
+
+/** "validated" only after a real Business Hypothesis run has finished and Hermes computed verdicts for these opportunities. */
+export function validationState(job: JobLike | null, investigationId: string | null, discovery: Discovery): ValidationState {
+  if (!investigationId) return { state: "not_started" };
+  if (!job || job.investigation_id !== investigationId || job.status === "queued" || job.status === "running") {
+    return { state: "running", investigationId };
+  }
+  const verdicts = z.array(feasibilityVerdictSchema).safeParse(job.feasibility);
+  const ids = new Set(discovery.data.opportunities.map((o) => o.opportunity_id));
+  if (job.agent_id !== "hypothesis" || job.status === "failed" || !verdicts.success || !verdicts.data.length
+      || !verdicts.data.every((v) => ids.has(v.opportunity_id))) {
+    return { state: "failed", investigationId, error: job.error };
+  }
+  return { state: "validated", investigationId, completedAt: job.updated_at, verdicts: verdicts.data };
+}

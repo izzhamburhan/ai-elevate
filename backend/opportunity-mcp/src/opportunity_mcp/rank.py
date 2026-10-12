@@ -116,16 +116,16 @@ def _why(kind: str, s: dict[str, Any]) -> list[str]:
     prb = f"{s['busy_prb_p95_mean']:.0f}%" if s["busy_prb_p95_mean"] is not None else "n/a"
     if kind == "event_surge":
         biggest = max(s["upcoming_events"], key=lambda e: e["attendance"] or 0)
-        return [f"{len(s['upcoming_events'])} upcoming event(s) in 30 days, {s['upcoming_attendance']:,} expected attendees; largest: {biggest['name']} ({biggest['attendance']:,}).",
+        return [f"{len(s['upcoming_events'])} upcoming synthetic event(s) in 30 days, {s['upcoming_attendance']:,} expected attendees (synthetic); largest: {biggest['name']} ({biggest['attendance']:,}).",
                 f"Evening footfall averages {s['evening_footfall_mean']:,.0f} visitors/hour (synthetic ML dataset).",
-                f"Busy-hour PRB p95 averages {prb} across {s['sites']} sites; {s['congested_sites']} site(s) at or above {CONGESTED_PRB:.0f}%."]
+                f"Synthetic busy-hour PRB p95 averages {prb} across {s['sites']} sites; {s['congested_sites']} site(s) at or above {CONGESTED_PRB:.0f}%."]
     unmet = s["sme_count"] * (1 - s["tm_business_penetration_pct"] / 100)
     lines = [f"{s['sme_count']:,} SMEs (synthetic), {s['tm_business_penetration_pct']:.0f}% on TM business broadband: ~{unmet:,.0f} not yet served.",
-             f"{s['broadband_enquiries_90d']} business-broadband enquiries in 90 days; {s['mobile_only_sme_pct']:.0f}% of SMEs are mobile-only."]
+             f"{s['broadband_enquiries_90d']} business-broadband enquiries in 90 days; {s['mobile_only_sme_pct']:.0f}% of SMEs are mobile-only (synthetic)."]
     if kind == "sme_fibre":
-        lines.append(f"{s['fibre_serviceable_pct']:.0f}% of SME premises fibre-serviceable; {s['fibre_backhaul_sites']}/{s['sites']} sites on fibre backhaul.")
+        lines.append(f"{s['fibre_serviceable_pct']:.0f}% of SME premises fibre-serviceable (synthetic); {s['fibre_backhaul_sites']}/{s['sites']} sites on fibre backhaul.")
     else:
-        lines.append(f"Only {s['fibre_serviceable_pct']:.0f}% fibre-serviceable, while busy-hour PRB p95 averages {prb} (spare radio capacity).")
+        lines.append(f"Only {s['fibre_serviceable_pct']:.0f}% fibre-serviceable (synthetic), while synthetic busy-hour PRB p95 averages {prb} (spare radio capacity).")
     return lines
 
 
@@ -198,6 +198,7 @@ def discover(og: OpportunityGraph, top_k: int = 3) -> dict[str, Any]:
             "where": {"area_id": s["area_id"], "area": s["name"], "cluster": s["cluster"], "state": s["state"], "lat": s["lat"], "lng": s["lng"],
                       "supporting_site_ids": [x["site_id"] for x in sites]},
             "why": _why(c["kind"], s), "what_tm_should_do": _action(c["kind"], s),
+            "validation_status": "graph-ranked; not validated by agents",
             "hypothesis": f"If TM acts on {TITLES[c['kind']].lower()} in {s['cluster']}, the demand signals above indicate measurable uptake; the existing network can support it.",
             "scores": {"overall": c["score"], "demand": c["demand_score"], "feasibility": c["feasibility_score"]},
             "demand_signals": {k: (round(s[k]) if isinstance(s[k], float) else s[k]) for k in ("sme_count", "broadband_enquiries_90d", "tm_business_penetration_pct", "mobile_only_sme_pct",
