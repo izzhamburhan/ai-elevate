@@ -8,7 +8,7 @@ import KeplerGlSchema from "@kepler.gl/schemas";
 import { loadMapSnapshot, saveMapSnapshot } from "@/components/chat/chat-history";
 import { getTheme } from "@/lib/theme";
 
-import { DOWN_TOWERS_DATA_ID, downTowersAction } from "./down-towers";
+import { towerLayersAction } from "./down-towers";
 import { basemapFor, FOLLOWING_BASEMAPS } from "./basemap-choice";
 import { PENINSULA_VIEW, type makeKeplerStore } from "./kepler-store";
 
@@ -66,18 +66,18 @@ function waitFor(store: KeplerStore, ready: () => boolean, timeoutMs = 15_000) {
 }
 
 /**
- * The map a new chat starts with: the towers that are down right now, over Peninsular Malaysia.
- * Resolves to whether they were added; without the tower MCP the map starts empty on the same view.
+ * The map a new chat starts with: the network as it is right now (outages on top), over Peninsular
+ * Malaysia. Resolves to the datasets added; without the tower MCP the map starts empty on the same view.
  */
 async function addStartingData(dispatch: (action: KeplerAction) => void, isCurrent: () => boolean) {
-  const action = await downTowersAction();
-  if (!isCurrent()) return false;
-  if (!action) {
+  const towers = await towerLayersAction();
+  if (!isCurrent()) return [];
+  if (!towers) {
     dispatch(updateMap(PENINSULA_VIEW));
-    return false;
+    return [];
   }
-  dispatch(action);
-  return true;
+  dispatch(towers.action);
+  return towers.dataIds;
 }
 
 /**
@@ -133,9 +133,8 @@ function createChatMapSync(store: KeplerStore, mapId: string) {
     dispatch(resetMapConfig());
     if (!snapshot) {
       dispatch(mapStyleChange(basemapFor(getTheme())));
-      if (await addStartingData(dispatch, isCurrent)) {
-        await waitFor(store, () => Boolean(read()?.visState.datasets[DOWN_TOWERS_DATA_ID]));
-      }
+      const ids = await addStartingData(dispatch, isCurrent);
+      await waitFor(store, () => ids.every((id) => read()?.visState.datasets[id]));
       return;
     }
 
