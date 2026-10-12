@@ -395,7 +395,8 @@ def analyze_network_congestion(
         ).fetchall()
         ev.add("kpi_hourly", f"{len(ids)} sites")
         busy = dict(con.execute(
-            "SELECT cell_name, arg_max(h, p) FROM (SELECT cell_name, hour(ts_utc + INTERVAL 8 HOUR) h, avg(prb_dl_pct) p FROM kpi_hourly "
+            # saturated cells tie on PRB; round (parallel float sums differ in the last bits) and take the earliest hour
+            "SELECT cell_name, first(h ORDER BY round(p, 6) DESC, h) FROM (SELECT cell_name, hour(ts_utc + INTERVAL 8 HOUR) h, avg(prb_dl_pct) p FROM kpi_hourly "
             "WHERE site_id IN (SELECT unnest(?::VARCHAR[])) AND ts_utc >= ? AND ts_utc < ? GROUP BY 1, 2) GROUP BY 1",
             [ids, start, end],
         ).fetchall())

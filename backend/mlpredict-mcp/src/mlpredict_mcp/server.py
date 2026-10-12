@@ -20,7 +20,7 @@ DEFAULT_PORT = 8126
 INSTRUCTIONS = (
     "Local machine-learning predictions on the NetOps network and Malaysian commercial areas: crowd/footfall forecasts, the best "
     "areas for a temporary sales booth, site outage risk for the next 24 hours, hourly congestion forecasts up to a week ahead, "
-    "and anomaly detection. Read-only. Models are LightGBM and Isolation Forest trained locally; no LLM produces numbers. "
+    "anomaly detection, and business demand signals that combine them per area. Read-only. Models are LightGBM and Isolation Forest trained locally; no LLM produces numbers. "
     "Times: UTC plus a Malaysia-time (+08:00) copy; dates without an offset are Malaysia time. ALL DATA IS SYNTHETIC: metrics "
     "are synthetic benchmarks, and every answer carries its uncertainty, provenance and limitations, plus GeoJSON for the map."
 )
@@ -90,6 +90,15 @@ def build_server(*, search: bool = False) -> FastMCP:
                                  lat: Lat | None = None, lng: Lng | None = None, radius_km: Radius | None = None,
                                  limit: Annotated[int, Field(ge=1, le=100)] = 20) -> dict[str, Any]:
         return _run(lambda: tools.detect_network_anomalies(start, end, cluster, site_ids, lat, lng, radius_km, limit))
+
+    @mcp.tool(annotations=READ_ONLY, description=(
+        "Business demand signals per commercial area for a future window, e.g. 'where should we investigate demand and capacity this "
+        "Saturday?'. Combines the footfall, booth, congestion and failure models into a demand index, capacity pressure, reliability "
+        "risk, a signal (demand_exceeds_capacity, reliability_risk, demand_with_headroom, structural_congestion, steady) and a ranked "
+        "investigation priority with evidence. The output schema (demand-signals-v1) is the Opportunity Graph contract."))
+    def get_business_demand_signals(day: Day | None = None, hour_from: Hour = 12, hour_to: Hour = 22, cluster: str | None = None,
+                                    area_ids: list[str] | None = None, limit: Annotated[int, Field(ge=1, le=50)] = 10) -> dict[str, Any]:
+        return _run(lambda: tools.get_business_demand_signals(day, hour_from, hour_to, cluster, area_ids, limit))
 
     @mcp.tool(annotations=READ_ONLY, description=(
         "Evaluation metrics of the models (footfall, booth, failure, congestion, anomaly) against simple baselines on held-out later "

@@ -146,7 +146,7 @@ All splits are chronological: train on earlier time, test on later time. Every m
 | Test | Model | Baseline |
 |---|---|---|
 | NDCG@3 (per booth day) | **0.957** | 0.925 |
-| Top-3 hit rate | 0.762 | 0.762 (tie) |
+| Top-3 hit rate | **0.786** | 0.762 |
 | Sign-ups MAE | **2.80** | 3.13 |
 
 Each recommendation also gives:
@@ -239,7 +239,7 @@ Model PR-AUC is 0.855.
 
 ## Tools (MCP, read-only)
 
-All seven tools are read-only (`readOnlyHint: true`). With `--search`, the listing shows only `mlpredict_search_tools` and `mlpredict_call_tool`.
+All eight tools are read-only (`readOnlyHint: true`). With `--search`, the listing shows only `mlpredict_search_tools` and `mlpredict_call_tool`.
 
 | Tool | Main inputs | Main outputs |
 |---|---|---|
@@ -248,6 +248,7 @@ All seven tools are read-only (`readOnlyHint: true`). With `--search`, the listi
 | `predict_site_failure_risk` | cluster, circle, `site_ids` or the whole network; `limit` | sites with score, level, contributing factors, preventive checks |
 | `forecast_network_congestion` | area or `event_id`, `start`/`end` (default the coming weekend), `threshold_pct` | cells with risk, forecast peak, busy hours, interval, event attendance; events |
 | `detect_network_anomalies` | area, `start`/`end` (default the last 24 h of data) | sites with anomalous cell-hours, score, worst hour with its KPIs and deviations, impact |
+| `get_business_demand_signals` | `day`, hours (default 12–22), `cluster`/`area_ids`, `limit` | per area: demand index, capacity pressure, reliability risk, signal, investigation priority, indicators, evidence (Order 5 update, see `docs/ORDER5_PREDICTIVE_INTELLIGENCE.md`) |
 | `get_ml_model_metrics` | `model` (optional) | the evaluation above, per model |
 | `get_ml_model_status` | — | ready or not, versions, training time, data generators, library versions |
 
@@ -270,7 +271,7 @@ Every prediction carries:
 | Agent | Tools |
 |---|---|
 | Forecast Agent | `predict_area_footfall`, `forecast_network_congestion`, `get_ml_model_metrics`, `get_ml_model_status` |
-| Business Agent | `rank_business_locations`, `predict_area_footfall` |
+| Business Agent | `rank_business_locations`, `predict_area_footfall`, `get_business_demand_signals` |
 | Engineer Agent | `predict_site_failure_risk`, `detect_network_anomalies`, `forecast_network_congestion` (with the Order 4 tools) |
 | Orchestrator | all; pass `geojson` to the map |
 
@@ -316,7 +317,7 @@ Run from `backend/`: `uv run pytest mlpredict-mcp netintel-mcp`. The tests build
 | Congestion forecast for `EVT-SA-FESTIVAL`: forecast window, event listed, intervals ordered; far future refused | PASS |
 | Anomalies find the transport-hub incident; future windows refused | PASS |
 | Status and metrics tools; "not ready" when no models are trained | PASS |
-| MCP server lists 7 read-only tools; errors are tool errors | PASS |
+| MCP server lists 8 read-only tools; errors are tool errors | PASS |
 | GeoJSON contract (coordinates inside Malaysia, `[lng, lat]`, properties) | PASS |
 | Order 4 tests on `intel-v2` | PASS |
 | Full backend suite (all servers) | PASS: 605 tests. One existing `scam-mcp` test sometimes fails at random on its own; it is unrelated. |
@@ -327,6 +328,17 @@ Run from `backend/`: `uv run pytest mlpredict-mcp netintel-mcp`. The tests build
 | Linux AMD64 build on another machine | NOT VERIFIED (built and run here: Windows host, Podman WSL machine) |
 
 ## Known limitations
+
+**Models against their simple baselines (synthetic test data):**
+
+| Model | Beats its baseline? |
+|---|---|
+| Footfall | Yes: MAE 119.5 vs 196.0 |
+| Booth | Yes, narrowly: NDCG@3 0.957 vs 0.925, top-3 hit rate 0.786 vs 0.762 |
+| Congestion | Yes on error: MAE 6.59 vs 8.80. Busy-hour recall is slightly lower (0.681 vs 0.694) |
+| **Failure** | **No.** PR-AUC 0.203 vs 0.213 and ROC-AUC 0.723 vs 0.737 for an alarm heuristic. It does better only in its top 43 (precision 0.372 vs 0.302), and with 43 test outages that difference is within noise. |
+| **Anomaly** | **No.** Precision 0.822 vs 0.982 and recall 0.837 vs 0.899 for fixed thresholds. Those thresholds mirror how the incidents were generated. |
+
 
 - **Everything is synthetic.** The models learn relationships the generators put in, such as event spill, the payday bump and outage precursors. The benchmarks show the method, not real-world skill.
 - **The failure model** is no better than a simple alarm heuristic on PR-AUC or ROC-AUC, and many outages are unpredictable by design. Use it as a ranked shortlist for preventive checks.

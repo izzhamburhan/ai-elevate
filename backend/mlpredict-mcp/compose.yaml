@@ -1,4 +1,4 @@
-# Predictive ML MCP on Podman (works with `podman compose` or podman-compose).
+# Predictive ML MCP on Podman or Docker (`podman compose`, podman-compose or `docker compose`).
 #   cd backend/mlpredict-mcp
 #   podman compose -p ai-elevate-ml up -d --build       # serve on 127.0.0.1:8126
 #   podman compose -p ai-elevate-ml run --rm train      # rebuild data/models if stale (writes backend/data)
