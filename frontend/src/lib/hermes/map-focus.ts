@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 
+import { flyTo } from "@/components/map/camera";
 import type { makeKeplerStore } from "@/components/map/kepler-store";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 
@@ -22,7 +23,7 @@ export function focusTower(tower: Omit<FocusedTower, "at">) {
 
 const HIGHLIGHT = "hermes-evidence-highlight";
 
-/** One bright ring at the evidence location, replacing the previous one, and a fly-to. */
+/** One bright ring at the evidence location, replacing the previous one, and a camera flight to it. */
 export async function highlightEvidence(store: ReturnType<typeof makeKeplerStore>, key: string, label: string, lat: number, lng: number, siteId?: string | null) {
   const state = runKeplerCommand(store, "workspace", "get_map_state", {}) as { datasets: { id: string }[] };
   if (state.datasets.some((d) => d.id === HIGHLIGHT)) runKeplerCommand(store, "workspace", "remove_dataset", { dataId: HIGHLIGHT });
@@ -33,7 +34,7 @@ export async function highlightEvidence(store: ReturnType<typeof makeKeplerStore
     dataId: HIGHLIGHT, type: "point", label: "Agents · selected evidence", columns: { lat: "latitude", lng: "longitude" },
     color: "#22d3ee", radius: 60, opacity: 0.35, visConfig: { filled: true, outline: true, thickness: 3, strokeColor: [34, 211, 238] },
   });
-  runKeplerCommand(store, "workspace", "set_view", { latitude: lat, longitude: lng, zoom: 13 });
+  flyTo(store, "workspace", { latitude: lat, longitude: lng, zoom: 13 });
   useMapFocus.setState({ highlighted: key });
 }
 

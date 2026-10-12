@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Provider } from "react-redux";
-import { addLayer, mapStyleChange, reorderLayer, wrapTo } from "@kepler.gl/actions";
+import { addLayer, mapStyleChange, reorderLayer, updateMap, wrapTo } from "@kepler.gl/actions";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { KeplerGl, keplerLocaleMessages } from "./kepler-panels";
@@ -11,6 +11,7 @@ import { getTheme, useTheme } from "@/lib/theme";
 import { ChatFullscreenContext } from "./chat-fullscreen";
 import { MIN_PANEL_WIDTH, SidePanelWidthContext, loadPanelWidth } from "./side-panel-width";
 import { ChatMapSync } from "./chat-map-sync";
+import { CommandDeck } from "./command-deck/command-deck";
 import { DownTowerCount } from "./down-tower-count";
 import { DrawnBoundaryBanner } from "./drawn-boundary-actions";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
@@ -125,6 +126,20 @@ export default function KeplerMap() {
     [sidePanelWidth, maxPanelWidth],
   );
 
+  // kepler sometimes records the map canvas's default 300×150 as the map's size (it reads it before
+  // layout) and keeps it, so everything projected from its map state (the outage rings, the "in view"
+  // count, the command deck) lands in the wrong place. Keep its size on the measured container.
+  useEffect(() => {
+    if (!width || !height) return;
+    const sync = () => {
+      const mapState = (store.getState().keplerGl as Record<string, { mapState: { width: number; height: number; isSplit: boolean } } | undefined>)[MAP_ID]?.mapState;
+      if (!mapState || mapState.isSplit || (mapState.width === width && mapState.height === height)) return;
+      store.dispatch(wrapTo(MAP_ID, updateMap({ width, height } as Parameters<typeof updateMap>[0])));
+    };
+    sync();
+    return store.subscribe(sync);
+  }, [store, width, height]);
+
   // swap the basemap whenever the app theme flips or the user picks the other basemap
   const basemapKind = useBasemapKind();
   useEffect(() => {
@@ -166,6 +181,8 @@ export default function KeplerMap() {
                   localeMessages={keplerLocaleMessages}
                   getMapboxRef={announceStyleOnFirstIdle}
                 />
+                {/* the deck's vignette and markers go under the outage rings; its cards above */}
+                <CommandDeck store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
                 <TowerPulse store={store} mapId={MAP_ID} />
                 <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
                 <DrawnBoundaryBanner store={store} mapId={MAP_ID} />

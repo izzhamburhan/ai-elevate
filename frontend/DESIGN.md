@@ -57,6 +57,10 @@ buttons and hairline borders.
 | kepler.gl theme (literal hex mirror of the tokens) | `src/components/map/kepler-theme.ts` |
 | Overrides for styles kepler hard-codes | `src/app/globals.css` (after the Radix rule) |
 | Example prompts (site Ask section and empty chat) | `src/lib/example-prompts.ts` |
+| Command deck over the map (caption, legend, scenes, briefing) | `src/components/map/command-deck/` |
+| Camera flights (fly to a view or to bounds) | `src/components/map/camera.ts` |
+| Scenes and regions (pure, tested) | `src/lib/map-scenes.ts` |
+| Investigation storyboard (pure, tested) | `src/lib/hermes/investigation.ts` |
 
 ---
 
@@ -193,12 +197,42 @@ Rules:
   a refresh finds new outages, the pill pulses and tags them "New". The same refresh rewrites the
   "Towers down" rows on the open map, including a saved chat's map. The pill opens a list by state,
   where a tower flies the map to it and "Show all down towers" fits them beside the side panel.
+- **Investigation sites** (`SITE_TONE_COLOR`): a site's dot takes the tower hue of the status its
+  service reported (outage red, degraded or congested amber, operational green). A site with no
+  status is violet, like the Hermes evidence layer. Tone never comes from agent prose.
 - `kepler-theme.ts` repeats the palette as hex, because kepler does color math on its theme values.
   When you change the palette, update that file too.
 - Some kepler styles have no theme key (for example the panel title's weight and letter-spacing).
   Override them in `globals.css` with a two-class selector, such as
   `.side-panel__content .panel-title`. That beats the single class that styled-components
   generates.
+
+### 3.5 Command deck
+
+The deck (`command-deck/command-deck.tsx`) dresses the map without competing with it. It is DOM
+over kepler's one WebGL canvas, never a second renderer, and it sits in the map area beside the
+side panel. The middle of the map stays empty.
+
+- **Region caption** (top left): `Network command` eyebrow, the region the camera is on in the
+  display serif, then the region's caption, the network's clock (the tower MCP's, so the screen
+  shows one clock) and "Synthetic". It changes as the camera moves, so a flight reads as a cut
+  between scenes. Hidden when the map area is narrower than 760px.
+- **Legend** (bottom left): one entry per *visible* layer in the colour kepler draws it, grouped as
+  Network, Weather ML, Investigation and Other, each with the time its data is for (network clock,
+  forecast valid window in MYT, investigation update). Collapsible; the choice is saved under
+  `elevate-command-deck`.
+- **Scenes** (pill above the legend): region quick-jumps and named scenes. A scene keeps
+  references only (camera, basemap, layer visibility, filters), stored under `elevate-map-scenes`.
+  Restoring applies what the open map still has and names what it skipped.
+- **Agents** (bottom right): while Hermes works, a pill naming the agent and the tool the service
+  reports; when it finishes, a briefing card with the Agents tab's own headline and counts. Hidden
+  while the Agents tab is open.
+- **Vignette:** a static radial darkening at the map's edges only; light mode gets a whisper of
+  it. This is the workspace's one gradient, and it lives on the map, not on chrome. Never put a
+  scrim behind the caption: it shades the map. The caption reads by a tight text shadow that hugs
+  the glyphs instead.
+- **Fixtures:** `?hermes=fixture` (development builds only) swaps Hermes for a scripted timeline.
+  Every surface that shows it says "Fixture".
 
 ---
 
@@ -207,12 +241,13 @@ Rules:
 | Font | Utility | Use |
 | --- | --- | --- |
 | Inter | `font-sans` (the default) | All UI and body text |
-| Newsreader 400/500 | `font-display` | The wordmark and hero-size display text only |
+| Newsreader 400/500 | `font-display` | The wordmark, hero-size display text and the map's region caption only |
 | Geist Mono | `font-mono` | Tool names, IDs, hashes, code |
 
 | Role | Classes | Where |
 | --- | --- | --- |
 | Hero display | `font-display font-normal leading-[1] tracking-[-0.035em] text-[2.9rem] sm:text-6xl lg:text-[5rem]` | Site hero, auth art panel |
+| Map caption | `font-display font-normal leading-[1] tracking-[-0.03em] text-[clamp(1.6rem,2.6vw,2.4rem)]` | The command deck's region name |
 | Section heading | `text-[2rem] sm:text-[2.6rem] font-medium leading-[1.1] tracking-[-0.025em]` | Site sections, auth title |
 | Empty-state headline | `text-2xl font-medium tracking-[-0.025em]` | Empty chat ("Where would you like to investigate?") |
 | Panel title | `text-lg font-medium tracking-[-0.025em]` (kepler's titles: 18px, same weight and tracking) | Workspace panel tabs ("Weather intelligence", "Layers") |
@@ -386,10 +421,16 @@ Close it with a round icon button:
 
 - **Workspace:** short and functional. Use `tw-animate-css` fade and slide (150–200ms), and a
   `Loader2` with `animate-spin` for work in progress.
+- **Map:** the camera is the cinematic element. `camera.ts` flies along one zoom-out, pan, zoom-in
+  curve (1.1–2.4s, ease-in-out cubic) and frames bounds beside the side panel; grabbing the map
+  stops it. The region caption cross-fades (500ms). Investigation markers ripple twice when they
+  arrive, then hold still; the focus reticle locks on once. Nothing new loops. (The outage rings are
+  the one loop, and they predate the deck.)
 - **Site:** the scroll reveal (700ms, `cubic-bezier(0.2, 0.7, 0.2, 1)`), the slow push-in on the
   hero art, and film grain. Never use these in the workspace.
 - **Always:** respect `prefers-reduced-motion`. Use the `motion-reduce:` variant, or follow the
-  media queries already in `globals.css`.
+  media queries already in `globals.css`. With reduced motion, camera flights cut straight to the
+  end.
 
 ---
 
@@ -442,6 +483,10 @@ Close it with a round icon button:
   show, stop `npm run dev`, delete `.next/dev/cache/turbopack`, and start it again. For a
   production build, delete `.next/cache/turbopack` first. Styles a feature can't do without (the
   down-tower marker) live in the component, in a React `<style>`, so they can't go stale.
+- **kepler's map size.** On some loads kepler records the canvas's default 300×150 as the map's
+  size and keeps it, so anything projected from its map state (outage rings, "in view" counts, the
+  command deck) lands in the wrong place. `kepler-map.tsx` keeps `mapState.width/height` on the
+  measured container; keep that sync if you touch the map's sizing.
 
 ---
 

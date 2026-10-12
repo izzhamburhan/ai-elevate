@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "react-redux";
-import { create } from "zustand";
 import { Bot, History, Layers, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   HERMES_AGENTS, hermesAgentsSchema, hermesJobSchema, hermesSubmissionSchema, isHermesJobActive,
-  type HermesAgentId, type HermesAgents, type HermesJob,
+  type HermesAgentId, type HermesAgents,
 } from "@/lib/hermes/contracts";
+import { requestHermes, wantsFixture } from "@/lib/hermes/adapter";
 import { fetchAreaInsights, siteLocations, type AreaInsights } from "@/lib/hermes/area-insights";
-import { loadHermesOverlay } from "@/lib/hermes/map-overlay";
 import { clearHighlight, highlightEvidence, useMapFocus } from "@/lib/hermes/map-focus";
 import {
   AREA_SCOPED_AGENTS, areaAdherence, areaFromPrompt, areaFromShape, areaFromTower, digest, evidenceNear, evidenceRows,
@@ -18,24 +17,21 @@ import {
 } from "@/lib/hermes/workspace";
 import { extractFeatureMetrics, formatBoundaryLabel } from "@/lib/menara/boundary-context";
 import {
-  DISCOVER_PROMPT, discoveryFromJob, discoverySchema, validationState, type Discovery,
+  DISCOVER_PROMPT, discoveryFromJob, discoverySchema, validationState,
 } from "@/lib/opportunities/contracts";
 import { loadOpportunityOverlay } from "@/lib/opportunities/map-overlay";
 import { cn } from "@/lib/utils";
+import { showInvestigationOnMap, SIDE_PANEL_MARGIN } from "../command-deck/investigation-map";
 import { useActiveDrawnFeature } from "../drawn-boundary-actions";
+import { useSidePanelWidth } from "../side-panel-width";
 import { AGENT_META, AgentRoster, AreaContextCard, InvestigationResults, Kind, ProgressTimeline } from "./agents-workspace";
 import { CommercialApplications } from "./commercial-applications";
 import { DecisionTimeMachine } from "./decision-time-machine";
+import { applyPolledJob, useHermesSelection } from "./hermes-selection";
+import { InvestigationStoryboard } from "./investigation-storyboard";
 import { OpportunityCards } from "./opportunity-cards";
 import type { makeKeplerStore } from "../kepler-store";
 
-type Selection = {
-  agentId: HermesAgentId; prompt: string; job: HermesJob | null;
-  investigationId: string | null; sessions: Partial<Record<HermesAgentId, string>>; discovery: Discovery | null;
-  /** The Business Hypothesis run validating `discovery`, kept apart from later investigations. */
-  discoveryRunId: string | null; discoveryJob: HermesJob | null;
-  attachArea: boolean; areaSource: "shape" | "tower"; areaCleared: string | null;
-};
 // Per-browser conveniences for the pitch: the last agent-validated discovery run and recent investigations.
 const LAST_RUN_KEY = "elevate.opportunities.lastValidatedRun";
 const RECENT_KEY = "elevate.hermes.recentInvestigations";
@@ -48,27 +44,13 @@ function saveRecent(entry: Recent) {
   try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
   return next;
 }
-// Tab switches retain the investigation. Persistent agent memory remains exclusively in Hermes profiles.
-const useHermesSelection = create<Selection>(() => ({
-  agentId: "engineer", prompt: "Check network health in the selected area: KPIs and NTT tickets for its sites on the latest data day, and which sites need attention.",
-  job: null, investigationId: null, sessions: {}, discovery: null, discoveryRunId: null, discoveryJob: null,
-  attachArea: true, areaSource: "shape", areaCleared: null,
-}));
-
-async function requestHermes(search: URLSearchParams, signal?: AbortSignal, body?: unknown) {
-  const response = await fetch(`/api/hermes?${search}`, {
-    cache: "no-store", signal, ...(body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error ?? "Hermes is unavailable.");
-  return payload;
-}
-
 const areaKey = (a: MapArea | null) => (a ? `${a.kind}:${a.center.lat.toFixed(5)},${a.center.lng.toFixed(5)}:${a.radiusKm}` : "");
 
 export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSidePanel: (id: string) => void } }) {
   const store = useStore() as ReturnType<typeof makeKeplerStore>;
-  const { agentId, prompt, job, investigationId, sessions, discovery, discoveryRunId, discoveryJob, attachArea, areaSource, areaCleared } = useHermesSelection();
+  const { agentId, prompt, job, investigationId, sessions, discovery, discoveryRunId, discoveryJob, attachArea, areaSource, areaCleared, mappedId } = useHermesSelection();
+  const panelWidth = useSidePanelWidth().width + 2 * SIDE_PANEL_MARGIN;
+  const [fixture] = useState(wantsFixture);
   const [discovering, setDiscovering] = useState(false);
   const [timeMachineOpen, setTimeMachineOpen] = useState(false);
   const [commercialOpen, setCommercialOpen] = useState(false);
@@ -81,7 +63,6 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [mapping, setMapping] = useState(false);
-  const [mappedId, setMappedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const finished = Boolean(job && !isHermesJobActive(job));
   const active = submitting || Boolean(investigationId && (!job || isHermesJobActive(job)));
@@ -143,10 +124,7 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
       try {
         const result = hermesJobSchema.parse(await requestHermes(new URLSearchParams({ action: "investigation", id: investigationId! }), controller.signal));
         if (controller.signal.aborted) return;
-        useHermesSelection.setState((state) => ({
-          job: result, sessions: result.session_id ? { ...state.sessions, [result.agent_id]: result.session_id } : state.sessions,
-          ...(result.investigation_id === state.discoveryRunId ? { discoveryJob: result } : {}),
-        }));
+        applyPolledJob(result);
         setError(null);
         if (!isHermesJobActive(result)) return;
       } catch (cause) {
@@ -237,7 +215,8 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
   async function showFindings() {
     if (!job) return;
     setMapping(true); setError(null);
-    try { await loadHermesOverlay(store, job); setMappedId(job.investigation_id); }
+    // the findings layer, then a camera flight that frames them beside the panel
+    try { await showInvestigationOnMap(store, "workspace", job, panelWidth); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Could not add findings to the map."); }
     finally { setMapping(false); }
   }
@@ -278,6 +257,13 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
         </div>
         <button type="button" aria-label="Refresh Hermes readiness" onClick={() => void checkAgents()} disabled={checking || active} className="rounded p-1 hover:bg-accent disabled:opacity-50"><RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} /></button>
       </header>
+
+      {fixture ? (
+        <p role="note" className="rounded-xl border border-amber/30 bg-amber/10 p-2.5 text-[12px] leading-relaxed">
+          <span className="font-medium">Fixture mode.</span> A scripted timeline for UI development: no Hermes agent, model or tool runs, and none of it is
+          evidence. Remove <code className="font-mono">?hermes=fixture</code> from the address to use the live service.
+        </p>
+      ) : null}
 
       <AgentRoster agents={agents} checking={checking} active={job && isHermesJobActive(job) ? job : null} />
 
@@ -357,6 +343,7 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
             </div>
             {job.status === "completed" || job.status === "partial" ? <Kind kind={job.agent_id === "hypothesis" && validatedId === job.investigation_id ? "validated" : "agent"} /> : null}
           </div>
+          <InvestigationStoryboard job={job} rows={rows} store={store} panelWidth={panelWidth} />
           <ProgressTimeline job={job} />
           {job.error ? <p role="alert" className="text-[11px] text-destructive">{job.error}</p> : null}
           <InvestigationResults job={job} digest={summary} rows={rows} adherence={adherence} areaLabel={jobArea?.label ?? null}
