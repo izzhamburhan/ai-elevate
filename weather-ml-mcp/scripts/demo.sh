@@ -34,6 +34,7 @@ PY
     cd "$service_dir"
     docker compose -p ai-elevate-weather up -d --no-build --pull never --wait --wait-timeout 120 weather
     curl --fail --silent --show-error "$WEATHER_ML_HTTP_URL/readyz" >/dev/null
+    echo "Open http://127.0.0.1:$demo_port/workspace for the cached Weather ML map."
     cd "$frontend_dir"
     exec npm run start -- --hostname 127.0.0.1 --port "$demo_port"
     ;;
@@ -47,6 +48,6 @@ PY
     ;;
   *)
     echo "Usage: bash scripts/demo.sh {build|start|check}"
-    echo "build before the pitch; start uses existing NetOps/Ollama and caches; check after generating the overlay."
+    echo "build before the pitch; start uses existing NetOps/Ollama and caches; open /workspace and generate the overlay before check."
     ;;
 esac

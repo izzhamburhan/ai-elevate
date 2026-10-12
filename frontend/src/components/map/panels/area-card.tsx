@@ -9,6 +9,7 @@ import { Loader2, MessageSquareText, Route, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { pointInRing } from "@/lib/menara/geometry";
+import { viewFor } from "@/lib/menara/map-draw";
 import { cn } from "@/lib/utils";
 
 import { MAP_ID, type makeKeplerStore } from "../kepler-store";
@@ -87,18 +88,6 @@ function circleRing(lat: number, lng: number, km: number): number[][] {
 /** Rings as line segments (lat0/lng0 to lat1/lng1): kepler's `line` layer needs no extra config. */
 function segmentsOf(rings: number[][][]) {
   return rings.flatMap((ring) => ring.slice(1).map((p, i) => ({ lat0: ring[i][1], lng0: ring[i][0], lat1: p[1], lng1: p[0] })));
-}
-
-/** Centre and zoom that put the area in the part of the map that is not under the chat panel. */
-function viewFor([west, south, east, north]: [number, number, number, number]) {
-  const lat = (south + north) / 2;
-  const lng = (west + east) / 2;
-  const spanLng = Math.max(east - west, 0.005);
-  const spanLat = Math.max(north - south, 0.005);
-  const zoomX = Math.log2((800 * 360) / (512 * spanLng));
-  const zoomY = Math.log2((650 * 360 * Math.cos((lat * Math.PI) / 180)) / (512 * spanLat));
-  const zoom = Math.min(16, Math.max(3, Math.min(zoomX, zoomY) - 0.2));
-  return { latitude: lat, longitude: lng - (205 * 360) / (512 * 2 ** zoom), zoom };
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {

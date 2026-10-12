@@ -14,8 +14,8 @@ that limitation without inventing values. Use weather GeoJSON with the existing 
 requested.
 
 Answer with cards where there is one. For any question about towers, people, trails or app usage in a place, town, district or
-radius, call show_area: it draws the place on the map and shows an interactive card, so do not list the towers yourself. For running or
-explaining self-healing or the flood incident, call run_self_heal. After a card, add one or two sentences at most.`;
+radius, call show_area: it draws the place on the map and shows an interactive card, so do not list the towers yourself. To heal or fix a
+faulty tower, an outage or the flood incident, call run_self_heal. After a card, add one or two sentences at most.`;
 
 type CreateAgentOptions = {
   model: LanguageModel;

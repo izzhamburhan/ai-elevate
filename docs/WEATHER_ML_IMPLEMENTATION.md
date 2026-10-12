@@ -1,6 +1,6 @@
 # Weather ML implementation and acceptance report
 
-Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. Implementation and integration changes are committed locally; no push, pull request or remote merge was made. The qualified upstream base (`bdabf62e67b09e9382e92e48866b45938680e94b`) is an ancestor of this branch. A later read-only fetch found `origin/main` at `2fa8e629efa369244a655379dbffb16edf1b451e`; that new upstream snapshot is not merged, per the current instruction. See the merge-readiness follow-up for the previewed conflict. Its Menara integrations and NetOps relocation to `backend/netops-mcp/` are preserved. Local `main` remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. No Hermes Ops/XSSHunter container or SSH tunnel was stopped, restarted, removed, or modified.
+Verified on 12 October 2026 (Asia/Kuala_Lumpur), on local branch `feat/weather-ml-mcp`. Implementation and integration changes are committed locally; no push, pull request or remote merge was made. The latest qualified upstream snapshot is `origin/main` at `2fa8e629efa369244a655379dbffb16edf1b451e`. It is integrated into the local feature branch under explicit user authorization, preserving the landing/workspace routing, model/prompt handoff and latest Menara human-approval features. The previous bdabf62 snapshot was the initial qualification base. See the final upstream-integration section below. Its Menara integrations and NetOps relocation to `backend/netops-mcp/` are preserved. Local `main` remains `9421f9e924caefbfc7a8bf5b491d63c4af292558`. No Hermes Ops/XSSHunter container or SSH tunnel was stopped, restarted, removed, or modified.
 
 ## Delivered architecture
 
@@ -36,7 +36,7 @@ PASS means the stated check was actually performed or the delivered artifact was
 | Criterion | Status | Evidence / limit |
 |---|---|---|
 | Isolated branch, qualified upstream base preserved, no publication | PASS | Local feature commits; qualified bdabf62 base is an ancestor; original Menara/backend preserved; local main unchanged; no push/PR/remote merge |
-| Compatible with newly fetched upstream2fa8e62 | FAIL | Branch not yet synchronized; merge preview reports one assistant-panel conflict; no actual merge started |
+| Compatible with upstream2fa8e62 | PASS | Locally integrated under user authorization; assistant-panel handoff and Weather default both retained; new combined tree qualified below |
 | Existing Next.js / Kepler / NetOps architecture retained | PASS | Additive connector/panel/service; NetOps source diff empty; existing agent still used |
 | Existing MCP tools not renamed or removed | PASS | Existing NetOps MCP discovers 62 tools; Kepler original 12 remain; six new weather names do not collide |
 | Actual pretrained ML, not LLM-generated weather | PASS | Direct Chronos tensor inference plus 108 backtest calls; existing agent returned the ML tool's structured forecast |
@@ -120,7 +120,7 @@ Historical reanalysis was acquired after replay dates and may contain revisions 
 
 ## Startup, configuration and remaining work
 
-Use [serviceREADME](../weather-ml-mcp/README.md) for exact bootstrap/ingest/evaluate/Compose/verification/shutdown commands. Running development URLs are `http://127.0.0.1:8002/mcp` and `http://127.0.0.1:3001`. The frontend uses `WEATHER_ML_HTTP_URL=http://127.0.0.1:8002`; the built-in connector defaults to that port. NetOps remains independently available on 8000. Local agent verification uses `LOCAL_LLM_MODEL=qwen3.5:9b`, `LOCAL_LLM_REASONING_EFFORT=none`; the pitch build labels that configured local model explicitly and defaults the picker to the existing local provider entry.
+Use [serviceREADME](../weather-ml-mcp/README.md) for exact bootstrap/ingest/evaluate/Compose/verification/shutdown commands. Development endpoints are `http://127.0.0.1:8002/mcp` and the app origin `http://127.0.0.1:3001`; current upstream serves the functional map at `/workspace` and the marketing page at `/`. The prior running app was preserved; isolated final verification uses localhost3002/workspace. The frontend uses `WEATHER_ML_HTTP_URL=http://127.0.0.1:8002`; the built-in connector defaults to that port. NetOps remains independently available on 8000. Local agent verification uses `LOCAL_LLM_MODEL=qwen3.5:9b`, `LOCAL_LLM_REASONING_EFFORT=none`; the pitch build labels that configured local model explicitly and defaults the picker to the existing local provider entry.
 
 For an open browser map with a generated overlay, the integration verification can also inspect the real Kepler bridge:
 
@@ -188,4 +188,27 @@ Technical qualification supports publication as an explicitly experimental histo
 
 During the final read-only upstream check, `origin/main` advanced from bdabf62 to **2fa8e62** (marketing landing/workspace routing and Menara human-approval changes). Its package-lock SHA256 is unchanged, so the clean-install diagnosis applies to the new main as well; it still contains no root application license. A merge preview, without changing branch/index/worktree, reports a conflict in `frontend/src/components/map/panels/assistant-panel.tsx`: upstream landing-page model handoff overlaps the opt-in local demo default. Current working source has no conflict markers or merge in progress.
 
-**Remaining integration blocker:** synchronize the feature branch with that new main only after authorization, preserve the upstream landing prompt/model handoff alongside the demo fallback, then rerun qualification. The intended model initialization is `useState(() => landing.modelId ?? weatherDemoChatModel(DEFAULT_CHAT_MODEL_ID))` alongside upstream's landing state/effect. Update the demo workspace URL to `/workspace` when that upstream routing change is incorporated. The combined new-main tree has **NOT VERIFIED** tests/build/map behavior; the 54 passing tests and clean-install qualification above apply to the current feature source. No new main changes were applied, and no actual merge or publication occurred in this follow-up.
+**Historical blocker (resolved in the authorized integration below):** the then-pending branch synchronization required preserving upstream landing prompt/model handoff alongside the demo fallback and rerunning qualification. The intended model initialization is `useState(() => landing.modelId ?? weatherDemoChatModel(DEFAULT_CHAT_MODEL_ID))` alongside upstream's landing state/effect. The original repair-only follow-up intentionally did not apply upstream or publish anything. The next user instruction explicitly authorized a local integration; its final qualification supersedes the earlier combined-tree NOT VERIFIED status below.
+
+## Final authorized upstream integration
+
+The next explicit user instruction authorized a **local** merge of latest `origin/main` into `feat/weather-ml-mcp`, while retaining the prohibition on push/PR/remote merge. Fetched upstream `2fa8e629efa369244a655379dbffb16edf1b451e` was still the remote main revision at the final check. The assistant-panel conflict is resolved with upstream's landing state and composer effect plus `landing.modelId ?? weatherDemoChatModel(DEFAULT_CHAT_MODEL_ID)`. Explicit landing provider selection wins; the cached pitch default is the fallback. Existing agent weather provenance instructions coexist with upstream's latest self-heal instructions.
+
+Independent resulting-diff review confirmed that Menara backend/HITL workflows, marketing components, globals, `/workspace`, map helpers, toolkit and Menara API files exactly match upstream. No main feature was overwritten. The only operational follow-up is the documented `/workspace` demo URL; HTTP/MCP APIs continue using the app origin. No application license was added.
+
+| Integration criterion | Status | Actual evidence |
+|---|---|---|
+| Latest upstream incorporated and conflict resolved | PASS | Local merge of2fa8e62; no unresolved index entries; both model-selection behaviors retained |
+| Fresh clean dependency install | PASS | Isolated resolved-index snapshot; `npm ci` installed1,516 packages in13s and applied existing Tippy React19 patch |
+| All54 regression tests | PASS | 46 Docker backend tests in5.35s plus eight frontend tests from the new clean tree |
+| Frontend lint / production build / TypeScript | PASS | Full lint, build and typecheck; all19 routes compile, including landing, workspace, Weather and Menara |
+| Upstream landing and prompt handoff | PASS | Browser submits landing draft with local provider; composer receives text, URL query is removed, no chat auto-send |
+| Explicit provider wins over demo fallback | PASS | Browser `model=openai` selects existing GPT entry without invoking it; bare workspace reload selects cached local Qwen default |
+| Real existing-agent Weather invocation | PASS | New merged `/api/chat` with local Qwen calls Chronos rainfall tool; valid replay model provenance and six points; zero stream/tool errors |
+| Six MCP tools and all horizons | PASS | Actual deployment script discovers/calls all tools and validates both targets at6/12/24h |
+| Kepler/proxy/source and layer preservation | PASS | Browser displays132 points/three locations/129 synthetic sites; local outline; API proxy/AI SDK connector; selective weather hide/restore retains cities and outline |
+| Deterministic replay and existing data | PASS | Repeated MCP geography matches; existing NetOps DuckDB checksum unchanged |
+| Existing unrelated resources preserved | PASS | Current Weather/NetOps/app and all unrelated container IDs plus SSH8001 preserved; temporary app3002 only used for verification |
+| No publishing or license assignment | PASS | Local commit only; no push, PR, remote merge, force push, or root/service license added |
+
+The branch is technically ready for a GitHub pull request as the documented historical-replay hackathon MVP, pending explicit publication authorization. Operational accuracy, fresh live observations, full browser air-gap, AMD64 execution, application-license approval and full redistribution audit retain their previously documented **NOT VERIFIED** limits. Mandatory human-approval functionality is preserved from upstream; unrelated Menara services were not reset or started just for this weather verification.

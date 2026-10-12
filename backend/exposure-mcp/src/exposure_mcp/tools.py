@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from menara_core import clock, kpi_overlay, settings
+from menara_core import clock, kpi_overlay, repairs, settings
 from menara_core.crowd import uplift_by_tower
 from menara_core.envelope import Envelope, wrap
 from menara_core.errors import InvalidInputError, NotFoundError
@@ -77,7 +77,7 @@ def _status(conn: sqlite3.Connection, name: str, now: int) -> str:
     row = conn.execute(
         "SELECT status FROM tower_state WHERE enodeb_name = ? AND t_min <= ? ORDER BY t_min DESC LIMIT 1", (name, now)
     ).fetchone()
-    return str(row["status"]) if row else "UP"
+    return repairs.status(conn, name, now, str(row["status"])) if row else "UP"
 
 
 def _event_uplift(conn: sqlite3.Connection, start: int, end: int) -> dict[str, float]:

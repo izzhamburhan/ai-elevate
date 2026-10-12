@@ -82,6 +82,7 @@ cd /Users/saf/Desktop/Hackathon/ai-elevate/weather-ml-mcp
 bash scripts/demo.sh build
 # Start only the cached Weather container and the frontend on localhost:3001.
 bash scripts/demo.sh start
+# Open http://127.0.0.1:3001/workspace (the root URL is the upstream landing page).
 # In a second terminal, after opening Weather and generating its overlay:
 bash scripts/demo.sh check
 ```
