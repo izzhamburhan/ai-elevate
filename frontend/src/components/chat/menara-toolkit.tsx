@@ -153,7 +153,8 @@ export const menaraToolkit = defineToolkit({
     description:
       "Self-heal a tower that is DOWN or DEGRADED and show it live (detect, diagnose, simulate, approve, apply, verify, roll back, " +
       "recover): the loop in the chat, the tower and its neighbours on the map and the load chart at the bottom right. It reads the " +
-      "tower's real status, alarm, power and flood data and picks the fix: tilt overloaded neighbours, soft-reset a hung cell, send a " +
+      "tower's real status, alarm, power and flood data and picks the fix: downtilt overloaded neighbours to shed load, or uptilt " +
+      "neighbours with room to cover a DOWN tower's area; soft-reset a hung cell; send a " +
       "drone or a field crew. Use it when the user asks to heal, fix or self-heal a tower, an outage, the flood incident or the faulty " +
       "towers. Give `tower` as the eNodeB name (e.g. KLCC-4721) when the user names one or after you found it (tower_get_alarms lists the " +
       "towers with active alarms); for the flood incident or the flood demo give tower KKRI-0142; otherwise omit it to heal the most " +

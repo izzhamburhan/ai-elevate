@@ -1,21 +1,31 @@
 "use client";
 
 import {
+  ActionPanelItem,
   AddDataButtonFactory,
   CollapseButtonFactory,
   CustomPanelsFactory,
+  FeatureActionPanelFactory,
   MapControlFactory,
   PanelHeaderFactory,
   PanelToggleFactory,
   SidePanelFactory,
   injectComponents,
 } from "@kepler.gl/components";
-import { Bot, ChevronLeft, CloudRain, Maximize2, MessageSquare, Minimize2 } from "lucide-react";
+import { useAui, useAuiState } from "@assistant-ui/react";
+import { Bot, Check, ChevronLeft, CloudRain, Maximize2, MessageSquare, MessageSquarePlus, Minimize2 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
+import {
+  boundaryAttachment,
+  BOUNDARY_MEDIA_TYPE,
+  extractFeatureMetrics,
+  formatBoundaryLabel,
+} from "@/lib/menara/boundary-context";
 import { BasemapControl } from "./basemap-control";
 import { useChatFullscreen } from "./chat-fullscreen";
+import { useShowChat } from "./drawn-boundary-actions";
 import { PanelResizeHandle } from "./panel-resize-handle";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
@@ -200,6 +210,47 @@ function ElevateMapControlFactory(...deps: Parameters<typeof MapControlFactory>)
 }
 ElevateMapControlFactory.deps = MapControlFactory.deps;
 
+/**
+ * Drawn shape action panel: adds an "Add to chat" button to the floating menu when
+ * a user clicks or edits a polygon/shape.
+ */
+function ElevateFeatureActionPanelFactory(...deps: Parameters<typeof FeatureActionPanelFactory>) {
+  const FeatureActionPanel = FeatureActionPanelFactory(...deps);
+
+  const ElevateFeatureActionPanel = (props: React.ComponentProps<typeof FeatureActionPanel>) => {
+    const aui = useAui();
+    const showChat = useShowChat();
+    const isAttached = useAuiState((s) =>
+      s.thread.composer.attachments.some((a) => a.contentType === BOUNDARY_MEDIA_TYPE),
+    );
+
+    const handleAddToChat = () => {
+      if (!props.selectedFeature) return;
+      const metrics = extractFeatureMetrics(props.selectedFeature);
+      const label = formatBoundaryLabel(metrics);
+      aui.thread().composer().addAttachment(boundaryAttachment(props.selectedFeature, label));
+      showChat();
+      props.onClose?.();
+    };
+
+    return (
+      <FeatureActionPanel {...props}>
+        {props.selectedFeature ? (
+          <ActionPanelItem
+            label={isAttached ? "In Chat" : "Add to Chat"}
+            className="add-to-chat-panel-item"
+            Icon={isAttached ? Check : MessageSquarePlus}
+            onClick={handleAddToChat}
+          />
+        ) : null}
+        {props.children}
+      </FeatureActionPanel>
+    );
+  };
+  return ElevateFeatureActionPanel;
+}
+ElevateFeatureActionPanelFactory.deps = FeatureActionPanelFactory.deps;
+
 // Order matters: injecting the side panel re-provides its deps (incl. the default
 // PanelHeader, PanelToggle, CollapseButton, CustomPanels and AddDataButton factories), so
 // their replacements must be injected after it.
@@ -211,6 +262,7 @@ export const KeplerGl = injectComponents([
   [CustomPanelsFactory, ElevateCustomPanelsFactory],
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
   [MapControlFactory, ElevateMapControlFactory],
+  [FeatureActionPanelFactory, ElevateFeatureActionPanelFactory],
   // the tower tooltip's actions (Heal this tower, Add to chat); hides tooltips with nothing to show
   ...towerPopoverFactories,
 ] as never);

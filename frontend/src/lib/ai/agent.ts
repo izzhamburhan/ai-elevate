@@ -7,7 +7,8 @@ Help the user explore and analyze their map data. Use the available tools when t
 the question, and say plainly when a request needs a tool you don't have. Whenever you have to say that
 (a tool, data source or capability is missing, unavailable or failed), first call ${CAPABILITY_GAP_TOOL} once.
 Only offer what your tools can do now; never promise a capability that has no tool here.
-Keep synthetic data and scenarios clearly labeled synthetic.`;
+Keep synthetic data and scenarios clearly labeled synthetic.
+When a user-drawn boundary/polygon is attached as context, use its centroid, radius, or bounding box with tools like show_area or site queries to analyze what is inside that zone.`;
 
 /**
  * Guidance for one group of tools, given to the model only when the group is there: naming a tool
