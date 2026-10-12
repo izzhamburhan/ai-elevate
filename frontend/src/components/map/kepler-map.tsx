@@ -10,11 +10,10 @@ import { KeplerGl, keplerLocaleMessages } from "./kepler-panels";
 import { getTheme, useTheme } from "@/lib/theme";
 
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
-import { BASEMAP_FOR_THEME, MALAYSIA_VIEW, makeKeplerStore } from "./kepler-store";
+import { BASEMAP_FOR_THEME, MALAYSIA_VIEW, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { useKeplerBridge } from "./use-kepler-bridge";
 
-const MAP_ID = "workspace";
 const SAMPLE_DATA_URL = "/data/world-cities.csv";
 
 function useElementSize<T extends HTMLElement>() {

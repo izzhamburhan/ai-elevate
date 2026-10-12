@@ -1,3 +1,5 @@
+import { MENARA_HOST, MENARA_SERVERS } from "@/lib/menara/servers";
+
 import type { McpServerRequest } from "./mcp-config";
 
 /**
@@ -19,35 +21,11 @@ export type BuiltinConnector = {
 };
 
 /** Menara synthetic-data MCPs (backend/*-mcp), started together by `python backend/run_all.py`. */
-const MENARA_CONNECTORS: readonly BuiltinConnector[] = (
-  [
-    ["tower", "Tower", 8101, "Cell tower status, KPIs, alarms and neighbours."],
-    ["ticket", "Ticket", 8102, "UniFi Mobile tickets, location clustering and notes."],
-    ["user", "User", 8103, "Subscriber serving cell and experience, PII masked."],
-    ["ontology", "Ontology", 8104, "Linked objects for towers: blast radius, neighbours, upstream dependencies and incidents."],
-    ["weather", "Weather", 8105, "Rainfall and lightning near a location."],
-    ["grid", "Grid", 8106, "Power feeder status and outages for tower sites."],
-    ["flood", "Flood", 8107, "River gauges and flood extent."],
-    ["twin", "Twin", 8108, "Digital twin: simulate a tower failure or a tilt change before acting."],
-    ["policy", "Policy", 8109, "Policy engine: allow, ask or deny actions, approvals, signed tokens, kill switch and audit log."],
-    ["drone", "Drone", 8110, "Simulated drones: dispatch a tower inspection and read canned vision findings."],
-    ["ran", "RAN", 8111, "Sandboxed RAN changes (tilt, cell reset, rollback) that need a signed policy token."],
-    ["sites", "Sites", 8112, "Critical sites (clinics, police, schools, SLA customers) and the towers that serve them."],
-    ["usage", "Usage", 8113, "What people use on the internet, by area and tower."],
-    ["energy", "Energy", 8114, "Tower power draw, battery and generator time, and night-time sleep savings."],
-    ["care", "Care", 8115, "Customer impact, drafted notices in four languages, and sending them."],
-    ["enterprise", "Enterprise", 8116, "Business customers, revenue and SLA penalty at risk, and service credits."],
-    ["exposure", "Exposure", 8117, "Quality on demand: profiles, a feasibility quote and a booking."],
-    ["field", "Field", 8118, "Which technician to send, road or boat, parts and safety, and dispatching them."],
-    ["events", "Events", 8119, "Crowd events ahead and the load they put on nearby towers."],
-    ["sensors", "Sensors", 8120, "Smart-city sensors and early-warning alerts."],
-    ["scam", "Scam", 8121, "Scam hotspots (counts only) and how many customers a shield would protect."],
-  ] as const
-).map(([key, name, port, description]) => ({
-  id: `builtin:menara-${key}`,
-  name,
-  description: `${description} (synthetic data)`,
-  url: `http://127.0.0.1:${port}/mcp`,
+const MENARA_CONNECTORS: readonly BuiltinConnector[] = MENARA_SERVERS.map((s) => ({
+  id: `builtin:menara-${s.key}`,
+  name: s.name,
+  description: `${s.description} (synthetic data)`,
+  url: `${MENARA_HOST}:${s.port}/mcp`,
   transport: "http",
   setupHint: "cd backend && python run_all.py",
 }));

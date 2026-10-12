@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.11",
     "PyYAML>=6.0",
+    "duckdb>=1.0",  # only to read netops.duckdb when seeding with --netops-db
 ]
 
 [project.scripts]
