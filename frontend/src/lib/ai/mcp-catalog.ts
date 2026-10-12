@@ -92,6 +92,7 @@ const MENARA_CATEGORY: Record<MenaraKey, ConnectorCategory> = {
   scam: "customer",
   netintel: "network",
   mlpredict: "revenue",
+  opportunity: "revenue",
   demo: "others",
 };
 
