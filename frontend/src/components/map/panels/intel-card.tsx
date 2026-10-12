@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Activity, AlertTriangle, CloudRain, Gauge, Network, Radio, ShieldAlert, Store, Users, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, CloudRain, Gauge, Network, Radio, ShieldAlert, Store, TrendingUp, Users, Wrench } from "lucide-react";
 
 import { useMapDraw } from "@/lib/menara/map-draw";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ export const INTEL_TOOLS = [
   "predict_site_failure_risk",
   "forecast_network_congestion",
   "detect_network_anomalies",
+  "get_business_demand_signals",
 ] as const;
 export type IntelTool = (typeof INTEL_TOOLS)[number];
 
@@ -44,6 +45,7 @@ const TITLES: Record<IntelTool, { title: string; icon: typeof Activity }> = {
   predict_site_failure_risk: { title: "Site outage risk (24 h)", icon: ShieldAlert },
   forecast_network_congestion: { title: "Congestion forecast", icon: Gauge },
   detect_network_anomalies: { title: "Network anomalies", icon: Activity },
+  get_business_demand_signals: { title: "Demand signals", icon: TrendingUp },
 };
 
 export const SEVERITY_COLOR: Record<Severity | "NONE", string> = {
@@ -291,6 +293,28 @@ function Rows({ tool, data }: { tool: IntelTool; data: Record<string, unknown> }
             </li>
           );
         })}
+      </ul>
+    );
+  }
+  if (tool === "get_business_demand_signals") {
+    return (
+      <ul className="flex flex-col gap-1">
+        {list("signals").slice(0, 5).map((s, i) => (
+          <li key={String(s.area_id)} className="rounded-lg border bg-card px-2 py-1.5">
+            <div className="flex items-center gap-2 font-medium">
+              #{i + 1} {String(s.name)}
+              <span className="ml-auto whitespace-nowrap text-[11px] text-muted-foreground">
+                {String(s.signal).replaceAll("_", " ")} · {Number(s.investigation_priority).toFixed(2)}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">{String(s.recommended_investigation)}</p>
+            {(s.evidence as string[]).slice(0, 2).map((e) => (
+              <p key={e} className="text-[11px] text-muted-foreground">
+                {e}
+              </p>
+            ))}
+          </li>
+        ))}
       </ul>
     );
   }

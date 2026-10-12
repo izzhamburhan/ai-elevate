@@ -1,0 +1,54 @@
+  [mlpredict.get_ml_model_status 102 ms, synthetic=True]
+Models: 5 models ready (version 1.0.0, trained 2026-10-12T16:22:17+00:00).
+Scenario: A 38,000-person festival at Stadium Shah Alam on Saturday evening (synthetic scenario SCN-UPCOMING-EVENT). ALL DATA IS SYNTHETIC.
+
+1. ANALYZE NETWORK (recorded data)
+  [netintel.analyze_network_congestion 91 ms, synthetic=True]
+  14 of 77 cells reached 85% PRB in the last 7 days (9 critical, 0 high, 1 medium, 4 low). Worst: CB7552_Shah Alam_011, 110 congested hours, busy hour 13:00 MYT.
+  [mlpredict.detect_network_anomalies 182 ms, synthetic=True]
+  2 of 14 sites had anomalous cell-hours between 2026-10-10T16:00:00Z and 2026-10-11T16:00:00Z UTC (7 cell-hours flagged). Most unusual: CK8606 (CK8606_Shah Alam_013).
+   - CK8606: worst: CK8606_Shah Alam_013 at 2026-10-11T00:00:00+08:00; largest deviations from usual: d_availability -99.9, d_prb -23.19, d_throughput_ratio -1.0
+   - CB5348: worst: CB5348_Shah Alam_021 at 2026-10-11T20:00:00+08:00; largest deviations from usual: d_latency -11.38, d_throughput_ratio +4.16, d_prb -1.56
+
+2. PREDICT FUTURE RISK
+  [mlpredict.forecast_network_congestion 77 ms, synthetic=True]
+  0 of 12 cells are forecast to congest (>= 85% PRB for 3+ hours) between 2026-10-17T09:00:00Z and 2026-10-17T16:00:00Z UTC; 1 event(s) in the area. Worst: CB8519_Shah Alam_021 peaking at 91.3%.
+   - CB8519_Shah Alam_021: peak 91.3% PRB (MEDIUM); 1 h at or above 85% PRB; P10-P90 at peak 79.9-100.0%
+   - CB8519_Shah Alam_011: peak 88.2% PRB (MEDIUM); 2 h at or above 85% PRB; P10-P90 at peak 76.8-99.6%
+  [mlpredict.predict_site_failure_risk 205 ms, synthetic=True]
+  Highest estimated outage risk in the next 24 h: CC3279 (high, score 96.81%); 1 high and 0 medium among the 3 shown (of 14 sites).
+   - CC3279 HIGH (score 96.81%): Check backhaul latency and congestion on the transport path.
+   - CB7552 LOW (score 0.97%): Check backhaul latency and congestion on the transport path.
+
+3. IDENTIFY DEMAND
+  [mlpredict.predict_area_footfall 121 ms, synthetic=True]
+  Busiest area Saturday 17 Oct 16:00-23:00 MYT: Kompleks PKNS Shah Alam (Shah Alam), about 16,634 visitors (P10-P90 15,183-19,069), with 1 event(s) nearby.
+  [mlpredict.get_business_demand_signals 2118 ms, synthetic=True]
+  Top area to investigate Sat 17 Oct 16:00-23:00 MYT: Kompleks PKNS Shah Alam (Shah Alam), reliability risk (priority 0.76): footfall ~16,634 (+7.5% vs usual), cell surge +26 PRB points, high outage risk at CC3279, 38,000 event attendees in reach. 5 of 5 areas shown carry an actionable signal.
+
+4. RECOMMEND AREAS FOR INVESTIGATION
+  #1 Kompleks PKNS Shah Alam, Shah Alam: reliability_risk (+ capacity_pressure, event_in_reach), priority 0.76, confidence medium
+     -> A nearby site ranks high for outage risk: run the preventive checks before any campaign here.
+        * footfall P50 16,634 visitors (P10-P90 15,184-19,070), +7.5% vs usual (median of the same window over the last 4 weeks)
+        * booth model: ~14.3 sign-ups for a 3-staff booth 16:00-23:00
+        * congestion model: 45 of 525 cell-hours at or above 85% PRB (9%); largest surge +26 points above its usual peak on CB8519_Shah Alam_021
+        * failure model: CC3279 high outage risk (score 96.81%)
+        * EVT-SA-FESTIVAL (festival, 38,000 people) in reach
+  #2 Plaza Metro Kajang, Kajang: demand_with_headroom (+ event_in_reach), priority 0.53, confidence medium
+     -> Demand is high and the network has headroom: a good candidate for a pop-up booth or event package.
+        * footfall P50 24,203 visitors (P10-P90 21,563-26,990), -0.4% vs usual (median of the same window over the last 4 weeks)
+        * booth model: ~22.8 sign-ups for a 3-staff booth 16:00-23:00
+        * congestion model: 24 of 154 cell-hours at or above 85% PRB (16%); largest surge +11 points above its usual peak on CK2236_Kajang_011
+        * failure model: CC3824 low outage risk (score 0.47%)
+        * EVT-KAJANG-20261017 (expo, 11,802 people) in reach
+  #3 Aman Central, Alor Setar: demand_with_headroom, priority 0.53, confidence medium
+     -> Demand is high and the network has headroom: a good candidate for a pop-up booth or event package.
+        * footfall P50 24,572 visitors (P10-P90 21,433-27,271), -0.0% vs usual (median of the same window over the last 4 weeks)
+        * booth model: ~16.6 sign-ups for a 3-staff booth 16:00-23:00
+        * congestion model: 57 of 609 cell-hours at or above 85% PRB (9%); largest surge +15 points above its usual peak on NP7108_Alor Setar_013
+        * failure model: NA0770 low outage risk (score 1.87%)
+  [mlpredict.rank_business_locations 195 ms, synthetic=True]
+  Pop-up booth check, Kompleks PKNS Shah Alam: ~18 sign-ups (band 16.8-21.3), RM 900; risks: Network: nearby cells forecast to reach 99% PRB in these hours (slower service for demos and sign-ups). Network availability nearby averaged 98.8% over the last 14 days.
+
+Every figure above came from MCP tool calls to local models on synthetic data; it is not real-world performance.
+Transcript with every raw tool result: data/demo_transcript.json

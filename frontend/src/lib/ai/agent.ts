@@ -68,10 +68,12 @@ describes geographic exposure, not actual telecom outages.`,
       "predict_site_failure_risk",
       "forecast_network_congestion",
       "detect_network_anomalies",
+      "get_business_demand_signals",
     ],
     text: `For forecasts (crowds or footfall, booth locations, site outage risk, congestion ahead, anomalies) use the
 predictive ML tools (predict_area_footfall, rank_business_locations, predict_site_failure_risk,
-forecast_network_congestion, detect_network_anomalies); give the numbers with their uncertainty and say they come
+forecast_network_congestion, detect_network_anomalies). For where to investigate demand against network capacity, use
+get_business_demand_signals. Give the numbers with their uncertainty and say they come
 from local models trained on synthetic data.`,
   },
   {

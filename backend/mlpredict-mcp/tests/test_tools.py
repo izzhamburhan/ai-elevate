@@ -101,7 +101,7 @@ def test_status_without_models(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Non
     assert status["ready"] is False and "Train them" in status["error"]
 
 
-def test_server_lists_seven_read_only_tools_and_reports_errors() -> None:
+def test_server_lists_eight_read_only_tools_and_reports_errors() -> None:
     async def run() -> tuple[list[Any], Any]:
         async with Client(build_server()) as client:
             listed = await client.list_tools()
@@ -113,6 +113,6 @@ def test_server_lists_seven_read_only_tools_and_reports_errors() -> None:
 
     listed, error = asyncio.run(run())
     assert {t.name for t in listed} == {"predict_area_footfall", "rank_business_locations", "predict_site_failure_risk", "forecast_network_congestion",
-                                        "detect_network_anomalies", "get_ml_model_metrics", "get_ml_model_status"}
+                                        "detect_network_anomalies", "get_business_demand_signals", "get_ml_model_metrics", "get_ml_model_status"}
     assert all(t.annotations.read_only_hint for t in listed)
     assert error is not None and "7 days" in str(error)

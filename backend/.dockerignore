@@ -1,0 +1,9 @@
+# Build context for mlpredict-mcp/Containerfile: keep the host venv, caches and data out of the image.
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+data
+*/data/*.duckdb
+*/data/*.parquet
