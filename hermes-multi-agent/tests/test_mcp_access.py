@@ -89,7 +89,7 @@ class McpAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.gateway.discover("orchestrator"), [])
 
     async def test_write_and_cross_profile_tools_denied_before_connection(self):
-        for profile, tool in [("engineer", "delete_vip_ticket"), ("engineer", "predict_weather_for_sites"), ("forecast", "get_sites"), ("business", "predict_rainfall"), ("orchestrator", "get_sites"), ("unknown", "get_sites")]:
+        for profile, tool in [("engineer", "delete_vip_ticket"), ("engineer", "predict_weather_for_sites"), ("hypothesis", "get_ran_kpi"), ("hypothesis", "predict_rainfall"), ("engineer", "opportunity_discover"), ("forecast", "get_sites"), ("business", "predict_rainfall"), ("orchestrator", "get_sites"), ("unknown", "get_sites")]:
             response = await self.gateway.call(profile, tool, {})
             self.assertFalse(response["ok"])
             self.assertEqual(response["error"]["code"], "PERMISSION_DENIED")
@@ -161,6 +161,10 @@ class McpAccessTests(unittest.IsolatedAsyncioTestCase):
         response = await gateway.call("engineer", "get_sites", {"technology": "4g"})
         self.assertEqual(response["error"]["code"], "MCP_TIMEOUT")
         self.assertIsNone(response["data"])
+
+    def test_hypothesis_reads_only_the_opportunity_graph(self):
+        self.assertEqual(set(AGENT_TOOL_ALLOWLISTS["hypothesis"]), {"opportunity"})
+        self.assertTrue(all(name.startswith("opportunity_") for name in AGENT_TOOL_ALLOWLISTS["hypothesis"]["opportunity"]))
 
     def test_policy_does_not_grant_by_name_prefix(self):
         self.assertEqual(AGENT_TOOL_ALLOWLISTS["forecast"]["weather"], WEATHER_READ_ONLY_TOOLS)

@@ -84,7 +84,9 @@ def source_geojson(evidence: list[dict]) -> dict | None:
         data = call.get("data", {})
         if not isinstance(data, dict):
             continue
-        geo = data.get("geojson", {})
+        # Menara-envelope tools (netintel, opportunity) nest their layer under data.data.geojson
+        nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+        geo = data.get("geojson") or nested.get("geojson", {})
         for feature in geo.get("features", []) if isinstance(geo, dict) else []:
             geometry = feature.get("geometry", {})
             coordinates = geometry.get("coordinates", [])

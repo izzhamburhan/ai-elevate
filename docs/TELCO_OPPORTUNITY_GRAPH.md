@@ -1,0 +1,156 @@
+# Telco Opportunity Graph and Business Hypothesis Agent
+
+AI Elevate finds TM business opportunities on its own; nobody has to ask a predefined question first. Click **Discover opportunities** in the workspace **Agents** panel. Three ranked opportunities appear within about 3 seconds, and the map flies to them. The **Business Hypothesis** Hermes agent then forms a testable hypothesis for each one. It asks the **Engineer** agent to validate network feasibility, and reports where the opportunity is, why it exists and what TM should do.
+
+Every value is **synthetic** hackathon data with realistic Malaysian locations. The rankings correlate signals; they do not prove causes. The commercial figures are indicative ranges built from stated assumptions. They are not revenue, forecasts or ROI.
+
+## Flow
+
+```
+Agents panel "Discover opportunities"
+   │ 1. /api/menara/call → opportunity_discover                      (≈3 s, deterministic)
+   ▼
+opportunity-mcp :8127 ── NetworkX graph ──► 3 ranked opportunities + GeoJSON ──► Kepler (amber areas, violet sites/events)
+   │ 2. /api/hermes POST {agent_id: "hypothesis"}                    (≈4–5 min, local qwen3.5:9b)
+   ▼
+Hermes "hypothesis" profile ── opportunity_discover (its own read-only call)
+   └─ delegate_specialist → "engineer" ── NetOps get_ran_kpi + get_ntt_tickets for the supporting Site_IDs
+   ▼
+Validated report per opportunity: where · why · hypothesis · network feasibility · what TM should do · indicative potential · confidence · risks
+```
+
+## The graph (`backend/opportunity-mcp`)
+
+`graph.build()` opens the existing Order 4/5 databases read-only:
+- `intel.duckdb` (netintel, `intel-v2`);
+- `ml.duckdb` (mlpredict, `ml-v1`).
+
+It adds one new seed, `sme_demand.csv`. With the current data the graph has 664 nodes and 647 edges, and it builds in under a second.
+
+| Node | Count | From | Attributes used |
+|---|---|---|---|
+| area | 38 | intel `area` | name, cluster, coordinates; evening footfall (ml `footfall_hourly`, last 28 days, 18:00–22:59 MYT), heavy-rain days (ml `rain_daily`, ≥20 mm, 30 days), pop-up booth sign-ups per 1,000 footfall (ml `booth_outcome`) |
+| site | 472 | intel `site` | busy-hour PRB p95/mean, peak users, availability (`kpi_hourly`, last 7 days); outages, complaints, alarms (30 days); RSRP (`grid_quality`); backhaul; morphology |
+| hub | 97 | intel `transport_link` | backhaul hub shared by several sites (shared point of failure) |
+| event | 19 | intel `event` | upcoming events within 30 days of the data end, with attendance |
+| sme | 38 | **new** `sme_demand.csv` | SMEs, fibre-serviceable %, TM business-broadband penetration %, mobile-only %, enquiries in 90 days, dominant sector |
+
+The edges are:
+- area → site (`serves`, the NetOps cluster);
+- site → hub (`backhauled_via`);
+- area → event (`hosts`);
+- area → sme (`has_demand`).
+
+Each area's signals are aggregated by walking its graph neighbourhood.
+
+## Ranking
+
+Three hypothesis families are scored for every area. Each score is 0.55 × demand + 0.45 × feasibility, using percentile ranks across the 38 areas:
+
+| Family | Demand | Feasibility | Suggested action |
+|---|---|---|---|
+| `sme_fibre`: SME business-fibre upsell | unserved SMEs and enquiries | fibre-serviceable %, reliability | targeted business-fibre campaign |
+| `sme_fwa`: fixed-wireless for fibre-unserved SMEs | the same, weighted by mobile-only % | low fibre serviceability, spare busy-hour PRB, reliability | fixed-wireless business plan |
+| `event_surge`: event connectivity and pop-up sales | upcoming attendance, evening footfall | spare busy-hour PRB, reliability | event package and pop-up booth (temporary capacity if congested) |
+
+The top three are picked with one per area, preferring different families for a broader portfolio. Ties break by ID, so the same data always gives the same output.
+
+Confidence is 0.45 plus extra for KPI coverage, at least five sites, and the margin over the next candidate. It is capped at 0.85 because the data is synthetic.
+
+Risks come from the same graph:
+- congestion (PRB p95 ≥ 80%);
+- outages;
+- three or more complaints;
+- a backhaul hub carrying several sites;
+- heavy rain, for events;
+- weak RSRP, for fixed-wireless.
+
+Current output (deterministic):
+
+| # | Opportunity | Score | Confidence | Indicative potential, RM/month |
+|---|---|---|---|---|
+| 1 | SME business-fibre upsell, Johor Bahru | 0.83 | 0.77 | 18,300–73,100 |
+| 2 | Event-driven connectivity and pop-up sales, Melaka Tengah | 0.83 | 0.77 | 1,000–1,700 |
+| 3 | Fixed-wireless for fibre-unserved SMEs, George Town | 0.77 | 0.65 | 4,500–18,200 |
+
+In live runs the Engineer's validation brought up real synthetic risks the graph alone does not show. NK4130 in George Town had 62.5% cell availability on 2026-10-11. A Johor ticket from 2026-10-03, "All LTE cells down at site, S1 link lost", had been resolved.
+
+## Synthetic assumptions (the only new data)
+
+`sme_demand.csv` has one row per existing area and is generated by `python -m opportunity_mcp.sme_seed` (seed 42, `opportunity-sme-v1`). The same `intel.duckdb` always produces the same file. Every row is labelled `synthetic=true`.
+- **SMEs**: the area's sites weighted by morphology (Dense Urban 420, Urban 260, Sub Urban 140, Rural 50 per site), ±15%.
+- **Fibre-serviceable %**: 30 + 55 × the share of the area's sites on fibre backhaul, ±10, clamped to 20–95. This keeps serviceability consistent with the network.
+- **TM business penetration**: 16–40%. **Mobile-only**: 12–28%, plus more where fibre is scarce.
+- **Enquiries in 90 days**: 2–5% of SMEs, raised where premises are unserved or mobile-only.
+
+The commercial assumptions are illustrative, not TM pricing:
+
+| Family | Take-up | ARPU, RM/month | Basis |
+|---|---|---|---|
+| sme_fibre | 3–6% | 150–300 | SMEs in fibre-serviceable premises not yet on TM business broadband |
+| sme_fwa | 4–8% | 100–200 | Mobile-only SMEs in premises without fibre serviceability |
+| event_surge | historical synthetic booth sign-up rate | 60–100 | Upcoming event attendance |
+
+## Business Hypothesis agent (Hermes `hypothesis` profile)
+
+- **Identity**: its own SOUL (`hermes-multi-agent/profiles/hypothesis/SOUL.md`), skill (`elevate-opportunity-hypotheses`), private memory and sessions.
+- **Tools**: only `opportunity_discover`, `opportunity_explain` and `opportunity_graph_summary`, plus native memory and skills. It has no NetOps, weather or shell access.
+- **Delegation**: `config.DELEGATION` lets it delegate to `engineer` and nobody else. The server rejects any other target with 403, and specialists cannot delegate at all.
+- **Validation**: Engineer makes exactly two NetOps calls, `get_ran_kpi` and `get_ntt_tickets`, for all supporting Site_IDs on the latest data day (2026-10-11).
+- **Grounding**: the agent copies ranks, scores and ranges from the tool and never re-ranks them. Hermes keeps the full tool results in the investigation ledger, and the map points come only from tool GeoJSON. Any report that names a tool the task did not run is flagged.
+
+Hermes reads GeoJSON nested in Menara envelopes (`data.data.geojson`), so map points from netintel and opportunity tool results now reach the map too. For the agent's context, only the headline features are sent; the full geometry stays in the ledger.
+
+## Feasibility verdicts (deterministic)
+
+Hermes computes each verdict in `hermes-multi-agent/src/elevate_hermes/feasibility.py` from the Engineer's actual results in the ledger (`get_ran_kpi` and `get_ntt_tickets` for the supporting sites). The agent never chooses the verdict.
+
+| Verdict | Rule (any supporting site) |
+|---|---|
+| blocked until repaired | availability < 95% or an open NTT ticket |
+| supported with risk | availability < 99.5%, PRB ≥ 80% or a resolved NTT ticket in the window |
+| not validated | no KPI row for the site, or no valid NTT check covering it |
+| supported | otherwise |
+
+The verdicts reach the agent in the delegation result as `computed_feasibility`, with the instruction to copy each label and only explain it. The finished job stores them as `feasibility`. If the report states a different verdict, the job gets a warning saying the report contradicts the computed verdict, which is authoritative. The UI shows the computed verdicts, never the prose.
+
+NetOps `get_ntt_tickets` matches a single `site_id` only; a comma-separated list silently returns no tickets. Earlier runs that reported "zero NTT tickets" for several sites at once were wrong for that reason. NTT checks now use one radius query per opportunity area: `where.ntt_check_radius_km` around `where.lat`/`where.lng`, with `status="all"`. The graph computes that radius from the real distance to the farthest supporting site, plus 0.5 km. The Order 2 Shah Alam step now uses a 3 km radius around the Shah Alam centre. A comma-list NTT query never counts as a check.
+
+## Ranked versus validated
+
+- **Graph-ranked (about 3 s):** the cards appear at once from the deterministic graph. They are labelled "Graph-ranked … not yet validated by agents", and every card shows "Network feasibility: not yet validated by agents".
+- **Agent-validated (about 4.6 min):** the computed verdict badges and the "Agent-validated run <id> · completed <time> MYT" banner appear only after the real Business Hypothesis run has finished and Hermes has computed verdicts for exactly these opportunities. A failed run keeps the "graph-ranked, unvalidated" label.
+- **Pitch:** after a validated run, **Show last validated run (<id>)** reopens it. It loads the discovery that run's agent actually retrieved, its verdicts and its report, all identified by investigation ID and completion time. The run ID is kept in this browser's `localStorage`; the run itself stays in the Hermes ledger.
+
+## Running it
+
+The intel and ml databases are derived files. They are git-ignored and built once from a read-only copy of `netops.duckdb`, so nothing is reseeded.
+
+```bash
+cd backend && uv sync
+uv run python -m netintel_mcp.seed --netops-db ../netops-mcp/data/netops.duckdb   # intel.duckdb, ~18 s
+uv run python -m mlpredict_mcp.data                                                # ml.duckdb (no model training needed)
+uv run python -m opportunity_mcp --transport streamable-http --port 8127           # or: python run_all.py opportunity
+```
+
+The server always lists its three tools explicitly. It accepts `run_all.py`'s `--search` flag and ignores it. Hermes reaches it at `OPPORTUNITY_MCP_URL` (default `http://host.docker.internal:8127/mcp`), and `/readyz` reports `services.opportunity`. The frontend calls it through the existing `/api/menara/call` route: `opportunity` is listed in `MENARA_SERVERS` on port 8127.
+
+## Verification
+
+Verified on 2026-10-12 through the Next.js proxy: discoveries `c345d368…` (pre-tuning, 554 s), `b7e4d03a…` (UI click, cards in 2.8 s, report in 275 s), `07f7beeb…` (281 s) and `d21556d5…` (277 s) all PASSED. In each, the Hypothesis agent ran `opportunity_discover`, Engineer validated feasibility with `get_ran_kpi` and `get_ntt_tickets`, the map got 14 source-backed points, no report named a tool it had not run, and every agent saved memory. The Order 2 orchestrated run `02452790…` still passes (351 s).
+
+```bash
+cd backend && uv run python -m pytest -q opportunity-mcp/tests        # graph, seed determinism, ranking, labels, server
+cd hermes-multi-agent && python3 scripts/verify_runtime.py --frontend-url http://127.0.0.1:3001 --runs 1 --discover 2 --timeout 1200
+cd frontend && npm run test:hermes && npm run lint && npm run build
+```
+
+## Limitations
+
+- All data is synthetic. Scores are rule-based correlations, and the commercial ranges are assumptions, not revenue or ROI.
+- Network feasibility uses daily synthetic KPIs and 7- and 30-day windows. It is not a capacity plan or a premise-level serviceability check.
+- The agent's prose can be imprecise. For example, it once flagged SM4266 at 99.53% as "below 99.5%" after rounding. The tool output and the ledger are authoritative.
+- Before the deterministic classifier existed, the agent's verdict wording varied: with the identical 62.5% availability at NK4130, George Town was "supported with risk" in one run and "not validated" in another. The verdict is now computed; any prose that still disagrees is flagged.
+- The Business Hypothesis run takes about 4–5 minutes on the local model, but the ranked cards and map appear immediately from the deterministic graph.
+- The Predictive ML package's tests and LightGBM training cannot run on this Mac host: LightGBM needs Homebrew `libomp`, which is not installed. This was the case before Order 4; use the mlpredict container image instead. Order 4 uses the ML data, not the models.
+- Not included: the Business Decision Time Machine (Order 6), the Revenue Leak Hunter and full commercial apps (Order 7), and live Weather ML or LightGBM inference inside the graph. The Predictive ML data is reused; its models are not called.

@@ -114,3 +114,31 @@ def test_report_claims_about_unexecuted_tools_are_flagged():
     assert unexecuted_tool_claims(summary, approved, {"get_sites", "get_ran_kpi"}) == ["get_ntt_tickets"]
     assert unexecuted_tool_claims(summary, approved, approved) == []
     assert unexecuted_tool_claims("get_ran_kpi_summary only", {"get_ran_kpi"}, set()) == []
+
+
+def test_hypothesis_may_delegate_only_to_engineer(tmp_path):
+    async def check():
+        app = build(Settings(state_dir=tmp_path))
+        runtime = app.state.runtime
+        job = runtime.store.create("hypothesis", "synthetic unit fixture")
+        runtime.tokens[job["investigation_id"]] = "unit-test-only-token"
+        runtime.store.update(job["investigation_id"], lambda value: value["tasks"].append({"task_id": "fixture", "agent_id": "hypothesis", "status": "running"}))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            for specialist in ("forecast", "business"):
+                response = await client.post("/internal/delegate", headers={"X-Elevate-Worker-Token": "unit-test-only-token"}, json={
+                    "investigation_id": job["investigation_id"], "parent_task_id": "fixture", "agent_id": specialist, "task": "fixture"})
+                assert response.status_code == 403
+    asyncio.run(check())
+
+
+def test_menara_envelope_geojson_is_mapped_and_sampled_for_context():
+    features = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [103.74, 1.49]}, "properties": {"kind": "opportunity", "id": "OPP-1"}}]
+    features += [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [103.7 + i / 100, 1.5]}, "properties": {"kind": "supporting_site", "site_id": f"S{i}"}} for i in range(6)]
+    call = {"ok": True, "tool": "opportunity_discover", "agent_id": "hypothesis", "source": {"synthetic": True},
+            "data": {"synthetic": True, "data": {"geojson": {"type": "FeatureCollection", "features": features}}}}
+    assert len(source_geojson([call])["features"]) == 7
+    compact = compact_tool_result(call)
+    nested = compact["data"]["data"]
+    assert nested["full_feature_count"] == 7 and nested["geojson"]["features"][0]["properties"]["kind"] == "opportunity"
+    assert len(nested["geojson"]["features"]) == 4
+    assert len(call["data"]["data"]["geojson"]["features"]) == 7  # the ledger copy is untouched

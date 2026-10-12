@@ -3,26 +3,38 @@
 import { useEffect, useState } from "react";
 import { useStore } from "react-redux";
 import { create } from "zustand";
-import { Bot, Layers, LoaderCircle, RefreshCw } from "lucide-react";
+import { Bot, Layers, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   HERMES_AGENTS, hermesAgentsSchema, hermesJobSchema, hermesSubmissionSchema, isHermesJobActive,
   type HermesAgentId, type HermesAgents, type HermesJob,
 } from "@/lib/hermes/contracts";
 import { loadHermesOverlay } from "@/lib/hermes/map-overlay";
+import {
+  DISCOVER_PROMPT, discoveryFromJob, discoverySchema, validationState, type Discovery,
+} from "@/lib/opportunities/contracts";
+import { loadOpportunityOverlay } from "@/lib/opportunities/map-overlay";
+import { OpportunityCards } from "./opportunity-cards";
 import type { makeKeplerStore } from "../kepler-store";
 
 const AGENT_LABELS: Record<HermesAgentId, string> = {
   orchestrator: "Orchestrator", forecast: "Forecast", business: "Business", engineer: "Engineer / Troubleshooting",
+  hypothesis: "Business Hypothesis",
 };
 type Selection = {
   agentId: HermesAgentId; prompt: string; job: HermesJob | null;
-  investigationId: string | null; sessions: Partial<Record<HermesAgentId, string>>;
+  investigationId: string | null; sessions: Partial<Record<HermesAgentId, string>>; discovery: Discovery | null;
+  /** The Business Hypothesis run validating `discovery`, kept apart from later investigations. */
+  discoveryRunId: string | null; discoveryJob: HermesJob | null;
 };
+// Per-browser convenience for the pitch: reopen the last completed, agent-validated discovery run.
+const LAST_RUN_KEY = "elevate.opportunities.lastValidatedRun";
+function readLastRun(): string | null { try { return window.localStorage.getItem(LAST_RUN_KEY); } catch { return null; } }
+function saveLastRun(id: string) { try { window.localStorage.setItem(LAST_RUN_KEY, id); } catch { /* storage unavailable */ } }
 // Tab switches retain the investigation. Persistent agent memory remains exclusively in Hermes profiles.
 const useHermesSelection = create<Selection>(() => ({
   agentId: "orchestrator", prompt: "Investigate telecom sites in Selangor that may be exposed to heavy rainfall.",
-  job: null, investigationId: null, sessions: {},
+  job: null, investigationId: null, sessions: {}, discovery: null, discoveryRunId: null, discoveryJob: null,
 }));
 
 async function requestHermes(search: URLSearchParams, signal?: AbortSignal, body?: unknown) {
@@ -36,7 +48,12 @@ async function requestHermes(search: URLSearchParams, signal?: AbortSignal, body
 
 export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSidePanel: (id: string) => void } }) {
   const store = useStore() as ReturnType<typeof makeKeplerStore>;
-  const { agentId, prompt, job, investigationId, sessions } = useHermesSelection();
+  const { agentId, prompt, job, investigationId, sessions, discovery, discoveryRunId, discoveryJob } = useHermesSelection();
+  const [discovering, setDiscovering] = useState(false);
+  const [storedRun] = useState(readLastRun);
+  const validation = discovery ? validationState(discoveryJob, discoveryRunId, discovery) : null;
+  const validatedId = validation?.state === "validated" ? validation.investigationId : null;
+  const lastRun = validatedId ?? storedRun;
   const [agents, setAgents] = useState<HermesAgents | null>(null);
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -73,6 +90,7 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
         if (controller.signal.aborted) return;
         useHermesSelection.setState((state) => ({
           job: result, sessions: result.session_id ? { ...state.sessions, [result.agent_id]: result.session_id } : state.sessions,
+          ...(result.investigation_id === state.discoveryRunId ? { discoveryJob: result } : {}),
         }));
         setError(null);
         if (!isHermesJobActive(result)) return;
@@ -97,6 +115,45 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
     finally { setSubmitting(false); }
   }
 
+  /** Order 4 demo: rank opportunities from the graph (instant), map them, then have the Hypothesis agent validate them. */
+  async function discoverOpportunities() {
+    setDiscovering(true); setError(null);
+    try {
+      const response = await fetch("/api/menara/call", {
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+        body: JSON.stringify({ tool: "opportunity_discover", args: { top_k: 3 } }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "The opportunity graph is unavailable. Start backend/opportunity-mcp on port 8127.");
+      const result = discoverySchema.parse(payload);
+      useHermesSelection.setState({ discovery: result, discoveryRunId: null, discoveryJob: null, agentId: "hypothesis", prompt: DISCOVER_PROMPT });
+      await loadOpportunityOverlay(store, result).catch(() => setError("Opportunities ranked, but the map layer could not be added."));
+      const submitted = hermesSubmissionSchema.parse(await requestHermes(new URLSearchParams(), undefined, {
+        agent_id: "hypothesis", prompt: DISCOVER_PROMPT, ...(sessions.hypothesis ? { session_id: sessions.hypothesis } : {}),
+      }));
+      useHermesSelection.setState({ investigationId: submitted.investigation_id, job: null, discoveryRunId: submitted.investigation_id });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Opportunity discovery failed.");
+    } finally { setDiscovering(false); }
+  }
+
+  /** Reopen a completed run exactly as its agent retrieved and validated it (clearly identified by ID and time). */
+  async function showLastRun() {
+    if (!lastRun) return;
+    setDiscovering(true); setError(null);
+    try {
+      const result = hermesJobSchema.parse(await requestHermes(new URLSearchParams({ action: "investigation", id: lastRun })));
+      const recorded = discoveryFromJob(result);
+      if (!recorded || validationState(result, result.investigation_id, recorded).state !== "validated") throw new Error("That run has no completed agent validation.");
+      useHermesSelection.setState({ discovery: recorded, discoveryRunId: result.investigation_id, discoveryJob: result,
+                                    job: result, investigationId: result.investigation_id, agentId: "hypothesis" });
+      await loadOpportunityOverlay(store, recorded).catch(() => setError("The run loaded, but the map layer could not be added."));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not load the last validated run."); }
+    finally { setDiscovering(false); }
+  }
+
+  useEffect(() => { if (validatedId) saveLastRun(validatedId); }, [validatedId]);
+
   async function showFindings() {
     if (!job) return;
     setMapping(true); setError(null);
@@ -115,6 +172,17 @@ export function HermesPanel({ uiStateActions }: { uiStateActions?: { toggleSideP
         <div className="flex items-center justify-between"><p className="font-medium">{checking ? "Checking Hermes…" : agents?.ready ? "Local Hermes ready" : "Hermes unavailable or not ready"}</p><button type="button" aria-label="Refresh Hermes readiness" onClick={() => void checkAgents()} disabled={checking || active} className="rounded p-1 hover:bg-accent disabled:opacity-50"><RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} /></button></div>
         <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1">{HERMES_AGENTS.map((id) => <span key={id} className="flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${agents?.agents.find((agent) => agent.agent_id === id)?.available ? "bg-green-500" : "bg-muted-foreground"}`} />{AGENT_LABELS[id]}</span>)}</div>
       </div>
+      <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs leading-relaxed">
+        <p className="font-medium">Telco Opportunity Graph</p>
+        <p className="mt-1 text-muted-foreground">Connects sites, KPIs, incidents, events, footfall and SME demand to rank where TM should act. The Business Hypothesis agent then has the Engineer validate network feasibility.</p>
+        <Button type="button" onClick={() => void discoverOpportunities()} disabled={checking || active || discovering || !agents?.agents.find((a) => a.agent_id === "hypothesis")?.available} className="mt-2 w-full">
+          {discovering ? <LoaderCircle className="animate-spin" /> : <Sparkles />}Discover opportunities
+        </Button>
+        {lastRun ? <Button type="button" size="sm" variant="ghost" onClick={() => void showLastRun()} disabled={discovering || active} className="mt-1 w-full">
+          Show last validated run ({lastRun.slice(0, 8)})
+        </Button> : null}
+      </div>
+      {discovery && validation ? <OpportunityCards discovery={discovery} validation={validation} /> : null}
       <form onSubmit={submitInvestigation} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium">Agent
           <select aria-label="Hermes agent" value={agentId} onChange={(event) => useHermesSelection.setState({ agentId: event.target.value as HermesAgentId })} disabled={active} className="h-9 rounded-md border bg-background px-2 text-xs">

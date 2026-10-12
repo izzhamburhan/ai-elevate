@@ -61,6 +61,7 @@ No repository/application license has been added. Public repository visibility d
 | `forecast` | Cautious meteorological analyst; `elevate-weather-replay` | Real Weather ML status, rainfall/temperature/site forecasting, metrics and geographic exposure |
 | `business` | Evidence-driven commercial strategist; `elevate-geographic-suitability` | Existing Malaysian geographic and synthetic network inventory comparisons; explicit missing demand/cost evidence |
 | `engineer` | Read-only RAN/NOC engineer; `elevate-readonly-network-diagnosis` | Existing synthetic inventory, RAN KPIs, congestion, incidents, maintenance records and coverage (no weather tools; Forecast owns weather evidence) |
+| `hypothesis` (Order 4) | Business Hypothesis analyst; `elevate-opportunity-hypotheses` | Telco Opportunity Graph tools only; may delegate network-feasibility validation to `engineer` only. See [TELCO_OPPORTUNITY_GRAPH.md](TELCO_OPPORTUNITY_GRAPH.md) |
 
 Each native profile has:
 
@@ -89,6 +90,7 @@ The gateway discovers actual registered schemas using FastMCP and validates argu
 | Engineer / NetOps | `get_sites`, `search_sites`, `get_site_info`, `get_site_cells`, `get_ran_site_info`, `get_ran_kpi`, `get_ran_kpi_summary`, `get_worst_cells`, `get_congested_cells`, `get_ntt_tickets`, `get_ntt_summary`, `get_coverage_layer`, `get_plan_maintenance` |
 | Business / NetOps | `get_sites`, `get_site_info`, `search_locations`, `list_location_categories`, `lookup_admin_area`, `list_admin_areas`, `get_admin_boundary` |
 | Orchestrator | No direct source-service access; local `delegate_specialist` with only the three specialist IDs |
+| Business Hypothesis / Opportunity | `opportunity_discover`, `opportunity_explain`, `opportunity_graph_summary`; `delegate_specialist` limited to `engineer` |
 
 Ticket writes/deletes, email, attachments, unrestricted subscriber data, shell and arbitrary agent-selected URLs are absent. Gateway responses carry `{ok, data, error, warnings, source}`. Provenance includes service/tool, retrieval time, read-only status, data class and an untrusted-response marker. Weather model/replay timing metadata is retained. Normal tool invocation never bootstraps weights or alters source datasets.
 

@@ -21,7 +21,8 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
-AGENTS = {"orchestrator", "forecast", "business", "engineer"}
+AGENTS = {"orchestrator", "forecast", "business", "engineer", "hypothesis"}
+OPPORTUNITY_TOOLS = {"opportunity_discover", "opportunity_explain"}
 TERMINAL = {"completed", "partial", "failed"}
 FORECAST_TOOLS = {
     "predict_rainfall", "predict_temperature", "predict_weather_for_sites", "get_weather_forecast_geojson",
@@ -33,6 +34,9 @@ BUSINESS_TOOLS = {
 }
 # The Order 2 demonstration request, verbatim.
 DEMO_PROMPT = "Investigate telecom sites in Selangor that may be exposed to heavy rainfall."
+# Order 4: the frontend "Discover opportunities" action sends this request to the Business Hypothesis agent.
+DISCOVER_PROMPT = ("Discover the top three TM business opportunities from the Telco Opportunity Graph, form a testable hypothesis "
+                   "for each, have the Engineer validate network feasibility for their supporting sites, and report where, why and what TM should do.")
 SMOKE_PROMPTS = {
     "forecast": "Use actual Weather ML MCP to assess six-hour rainfall in Kuala Lumpur historical replay. Preserve units, timestamps, source attribution and limitations. Do not invent rainfall.",
     "business": "Assess geographic suitability for a temporary sales booth around Kuala Lumpur using approved existing geographic tools. Distinguish real geography from synthetic scenarios; do not invent measured crowds, attendance or revenue.",
@@ -88,7 +92,7 @@ def validate_agents(payload: Any) -> dict[str, Any]:
     require(isinstance(payload, dict) and payload.get("ready") is True, "Hermes API is not ready")
     profiles = payload.get("agents", [])
     require(isinstance(profiles, list), "Agent discovery must return an array")
-    require({item.get("agent_id") for item in profiles} == AGENTS and len(profiles) == 4, "Expected four distinct Hermes profiles")
+    require({item.get("agent_id") for item in profiles} == AGENTS and len(profiles) == len(AGENTS), "Expected five distinct Hermes profiles")
     for agent in profiles:
         name = agent["agent_id"]
         require(agent.get("available") is True, f"Hermes profile {name} is unavailable")
@@ -163,7 +167,7 @@ def validate_job(job: Any, expected_agent: str) -> dict[str, Any]:
             require(isinstance(runtime, dict) and runtime.get("name") == "hermes-agent", "Completed task lacks native Hermes execution metadata")
             require(runtime.get("profile") == task["agent_id"] and runtime.get("soul_loaded") is True, "Completed task lacks isolated profile identity/SOUL")
             require(isinstance(runtime.get("revision"), str) and bool(runtime["revision"]) and isinstance(runtime.get("version"), str), "Completed task lacks pinned Hermes runtime provenance")
-    agents_required = {"forecast", "engineer"} if expected_agent == "orchestrator" else {expected_agent}
+    agents_required = {"forecast", "engineer"} if expected_agent == "orchestrator" else {"hypothesis", "engineer"} if expected_agent == "hypothesis" else {expected_agent}
     evidence = {}
     for agent in agents_required:
         completed = [task for task in by_agent.get(agent, []) if task.get("status") == "completed"]
@@ -174,12 +178,21 @@ def validate_job(job: Any, expected_agent: str) -> dict[str, Any]:
             evidence[agent] = validate_evidence(relevant, FORECAST_TOOLS, "weather")
         elif agent == "engineer":
             evidence[agent] = validate_evidence(relevant, NETWORK_KPI_TOOLS, "netops")
+        elif agent == "hypothesis":
+            evidence[agent] = validate_evidence(relevant, OPPORTUNITY_TOOLS, "opportunity")
         elif agent == "business":
             evidence[agent] = validate_evidence(relevant, BUSINESS_TOOLS, "netops")
     points = validate_geojson(job.get("geojson"))
+    feasibility = None
+    if expected_agent == "hypothesis":
+        feasibility = job.get("feasibility")
+        require(isinstance(feasibility, list) and feasibility and all(v.get("label") in {"supported", "supported with risk", "blocked until repaired", "not validated"} for v in feasibility),
+                "Discovery lacks computed feasibility verdicts")
+        feasibility = {v["opportunity_id"]: v["label"] for v in feasibility}
+    contradicted = [warning for warning in job.get("warnings", []) if warning.startswith("Report contradicts computed feasibility")]
     ungrounded = [warning for task in tasks for warning in task.get("warnings", []) if warning.startswith("Report names tools this task did not execute")]
     return {"investigation_id": job["investigation_id"], "agent_id": expected_agent, "status": job["status"], "task_agents": sorted(by_agent), "successful_tools": evidence, "map_points": points,
-            "ungrounded_tool_claims": ungrounded,
+            "ungrounded_tool_claims": ungrounded, "feasibility": feasibility, "feasibility_contradictions": contradicted,
             "hermes_profiles": {task["agent_id"]: task.get("runtime") for task in tasks if task.get("status") == "completed"}}
 
 
@@ -213,6 +226,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=360, help="Maximum seconds per actual investigation")
     parser.add_argument("--agents-smoke", default="", help="Optional comma-separated forecast,business,engineer direct-profile smoke checks")
     parser.add_argument("--prompt", default=DEMO_PROMPT, help="Orchestrator investigation request for the consecutive runs")
+    parser.add_argument("--discover", type=int, default=0, help="Consecutive real opportunity discoveries (Business Hypothesis + Engineer)")
     parser.add_argument("--report", type=Path, help="Write actual full evidence and qualification summary as JSON")
     args = parser.parse_args()
     report: dict[str, Any] = {"qualification": "NOT VERIFIED", "actual_execution": True, "investigations": []}
@@ -242,6 +256,12 @@ def main() -> int:
             summary["run"] = index + 1
             report["investigations"].append({"summary": summary, "actual_job": job})
             print(json.dumps({"run": index + 1, "qualification": "PASS", **summary}), flush=True)
+        for index in range(args.discover):
+            before = time.monotonic()
+            job, summary = run_investigation(api, frontend, "hypothesis", DISCOVER_PROMPT, args.timeout)
+            summary["duration_seconds"] = round(time.monotonic() - before, 3)
+            report["investigations"].append({"summary": summary, "actual_job": job})
+            print(json.dumps({"discovery": index + 1, "qualification": "PASS", **summary}), flush=True)
         for agent in smoke:
             job, summary = run_investigation(api, frontend, agent, SMOKE_PROMPTS[agent], args.timeout)
             report["investigations"].append({"summary": summary, "actual_job": job})
