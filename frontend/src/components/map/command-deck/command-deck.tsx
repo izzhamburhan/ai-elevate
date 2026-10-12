@@ -13,6 +13,7 @@ import { MapLegend } from "./map-legend";
 import { setDeckFocus, useDeckFocus } from "./deck-focus";
 import { ScenesMenu } from "./scenes-menu";
 import { SceneTitle } from "./scene-title";
+import { useBottomWidgetHeight } from "./use-bottom-widget";
 import { type KeplerStore, useKeplerValue } from "./use-kepler";
 
 const PREFS_KEY = "elevate-command-deck";
@@ -63,6 +64,7 @@ export function CommandDeck({ store, mapId, panelWidth }: { store: KeplerStore; 
     (a, b) => a.inset === b.inset && a.width === b.width && a.panel === b.panel,
   );
   const focus = useDeckFocus((s) => s.focus);
+  const bottomWidget = useBottomWidgetHeight();
   const [legendOpen, setLegendOpen] = useState(true);
 
   // the saved choice, or open when there's room for it
@@ -129,8 +131,11 @@ export function CommandDeck({ store, mapId, panelWidth }: { store: KeplerStore; 
         ) : null}
 
         <div
+          // sits above kepler's time panel when one is open, instead of on top of it
+          style={{ bottom: bottomWidget > 0 ? bottomWidget + 8 : 36 }}
           className={cn(
             "absolute bottom-9 flex gap-2",
+            "absolute flex gap-2",
             // on phones the panel's open button sits at the map's bottom left (kepler-panels.tsx); clear it
             narrow ? "right-0 left-3 flex-col items-start max-sm:left-12" : "right-0 left-3 items-end justify-between",
           )}

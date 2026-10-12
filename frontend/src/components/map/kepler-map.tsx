@@ -18,6 +18,7 @@ import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { basemapFor, useBasemapKind } from "./basemap-choice";
 import { MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
+import { PeopleHalos } from "./people-halos";
 import { TowerPulse } from "./tower-pulse";
 import { useTrueColorHover } from "./true-color-hover";
 import { useKeplerBridge } from "./use-kepler-bridge";
@@ -183,6 +184,7 @@ export default function KeplerMap() {
                 />
                 {/* the deck's vignette and markers go under the outage rings; its cards above */}
                 <CommandDeck store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
+                <PeopleHalos store={store} mapId={MAP_ID} />
                 <TowerPulse store={store} mapId={MAP_ID} />
                 <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
                 <DrawnBoundaryBanner store={store} mapId={MAP_ID} />

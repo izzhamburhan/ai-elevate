@@ -9,7 +9,9 @@ flood-cluster towers, stay where they are.
 The seeded period starts four weeks before T0 (minute -40320, a Saturday). A commuter's last two days (from
 minute -1440) are the original commute. The 26 days before that follow a weekly routine: Monday to Friday the same
 commute, and at the weekend either home or a trip to a synthetic mall (about 40% of commuters with a mall 3 to
-25 km away are mall regulars). All of it is synthetic.
+25 km away are mall regulars). On some weekdays a commuter also steps out for lunch near work, or runs an errand near
+home on the way back; those come from a third random stream, so the commute itself is the same with or without them.
+All of it is synthetic.
 """
 
 from __future__ import annotations
@@ -39,6 +41,14 @@ REGULAR_WEEKEND_CHANCE = 0.8
 OCCASIONAL_WEEKEND_CHANCE = 0.1
 MALL_START_MIN = (180, 420)  # 10:00 to 14:00, minutes after 07:00
 MALL_STAY_MIN = (120, 240)
+# weekday side trips: lunch near work, an errand near home on the way back
+LUNCH_CHANCE = 0.3
+LUNCH_START = 315  # 12:15, minutes after 07:00
+LUNCH_STAY_MIN = (40, 70)
+LUNCH_KM = (0.8, 3.0)
+ERRAND_CHANCE = 0.3
+ERRAND_STAY_MIN = (25, 55)
+ERRAND_KM = (1.0, 4.0)
 
 Visit = tuple[int, str]  # (start_min, tower)
 
@@ -77,11 +87,41 @@ def _en_route(towers: list[Tower], home: Tower, work: Tower) -> str | None:
     return min(options, key=lambda t: (haversine_km(*mid, t[1], t[2]), t[0]))[0]
 
 
-def _commute(rng: random.Random, home: str, work: str, mid: str | None) -> list[Visit]:
+class SideTrips:
+    """Optional weekday stops around a commute: lunch near work, an errand near home on the way back."""
+
+    def __init__(self, rng: random.Random, lunch: list[str], errand: list[str], cells: dict[str, list[str]]) -> None:
+        self.rng, self.lunch, self.errand, self.cells = rng, lunch, errand, cells
+        self.added: set[Visit] = set()  # visits a side trip adds; their cells come from this stream too
+
+    def cell(self, tower: str) -> str:
+        return self.rng.choice(self.cells[tower])
+
+    def lunch_at(self, day_start: int, work: str) -> list[Visit]:
+        """Out for lunch and back to work, or nothing."""
+        if not self.lunch or self.rng.random() >= LUNCH_CHANCE:
+            return []
+        start = day_start + LUNCH_START + self.rng.randint(-JITTER_MIN // 2, JITTER_MIN // 2)
+        visits = [(start, self.rng.choice(self.lunch)), (start + self.rng.randint(*LUNCH_STAY_MIN), work)]
+        self.added.update(visits)
+        return visits
+
+    def errand_before(self, arrive: int, last: str) -> list[Visit]:
+        """A stop near home before getting there (never the tower just left), or nothing."""
+        options = [t for t in self.errand if t != last]
+        if not options or self.rng.random() >= ERRAND_CHANCE:
+            return []
+        visit = (arrive, self.rng.choice(options))
+        self.added.add(visit)
+        return [visit]
+
+
+def _commute(rng: random.Random, home: str, work: str, mid: str | None, trips: SideTrips | None = None) -> list[Visit]:
     """Yesterday: home, work, home. Today, up to the end of the period: home, then on to work.
 
     Minutes are after T0 (07:00), so yesterday starts at -1440 and today's departure is about 08:00 (minute 60).
     A subscriber is still at home at minute 0, the departure never being earlier than minute 15.
+    With side trips, yesterday can also have lunch near work and an errand near home on the way back.
     """
     morning = DEPART_MORNING + rng.randint(-JITTER_MIN, JITTER_MIN)
     evening = DEPART_EVENING + rng.randint(-JITTER_MIN, JITTER_MIN)
@@ -90,12 +130,31 @@ def _commute(rng: random.Random, home: str, work: str, mid: str | None) -> list[
     def leg(depart: int, destination: str) -> None:
         if mid is not None:
             visits.append((depart, mid))
-        visits.append((depart + (EN_ROUTE_MIN if mid is not None else 0), destination))
+        arrive = depart + (EN_ROUTE_MIN if mid is not None else 0)
+        if trips is not None and destination == home:
+            errand = trips.errand_before(arrive, visits[-1][1])
+            if errand:
+                visits.extend(errand)
+                arrive += trips.rng.randint(*ERRAND_STAY_MIN)
+        visits.append((arrive, destination))
 
     leg(PERIOD_START + morning, work)
+    if trips is not None:
+        visits.extend(trips.lunch_at(PERIOD_START, work))
     leg(PERIOD_START + evening, home)
-    leg(morning, work)
+    leg(morning, work)  # today is the scenario's Saturday: no lunch trip
     return visits
+
+
+def _near(towers: list[Tower], center: Tower, km: tuple[float, float], excluded: set[str]) -> list[str]:
+    """Towers between km[0] and km[1] from a tower, nearest first, at most eight."""
+    box = bbox_around(center[1], center[2], km[1])
+    found = [
+        (haversine_km(center[1], center[2], t[1], t[2]), t[0])
+        for t in towers
+        if t[0] not in excluded and t[0] != center[0] and _inside_box(t, box)
+    ]
+    return [name for d, name in sorted(found) if km[0] <= d <= km[1]][:8]
 
 
 def _mall_options(towers: list[Tower], home: Tower, malls: list[str]) -> list[str]:
@@ -116,6 +175,7 @@ def _history(
     malls: list[str],
     regular: bool,
     pick_cell: Callable[[str], str],
+    side: SideTrips | None = None,
 ) -> list[tuple[int, str, str]]:
     """Rows (start_min, tower, cell) from HISTORY_START up to the evening return home of the day before yesterday.
 
@@ -123,9 +183,9 @@ def _history(
     """
     rows: list[tuple[int, str, str]] = [(HISTORY_START, home, pick_cell(home))]
 
-    def move(start: int, tower: str) -> None:
+    def move(start: int, tower: str, pick: Callable[[str], str] = pick_cell) -> None:
         if rows[-1][1] != tower:
-            rows.append((start, tower, pick_cell(tower)))
+            rows.append((start, tower, pick(tower)))
 
     for day in range(-HISTORY_DAYS, -1):  # day -28 (a Saturday) up to day -2
         day_start = day * 1440
@@ -135,7 +195,15 @@ def _history(
             for depart, destination in ((morning, work), (evening, home)):
                 if mid is not None:
                     move(depart, mid)
-                move(depart + (EN_ROUTE_MIN if mid is not None else 0), destination)
+                arrive = depart + (EN_ROUTE_MIN if mid is not None else 0)
+                if side is not None and destination == home:
+                    for start, tower in side.errand_before(arrive, rows[-1][1]):
+                        move(start, tower, side.cell)
+                        arrive += side.rng.randint(*ERRAND_STAY_MIN)
+                move(arrive, destination)
+                if side is not None and destination == work:
+                    for start, tower in side.lunch_at(day_start, work):
+                        move(start, tower, side.cell)
         elif malls and (t0 + timedelta(days=day)).weekday() == 5:  # Saturday: decide for the whole weekend
             chance = REGULAR_WEEKEND_CHANCE if regular else OCCASIONAL_WEEKEND_CHANCE
             if rng.random() < chance:
@@ -149,6 +217,7 @@ def _history(
 def build_movement(conn: sqlite3.Connection, seed: int, scenario: Scenario) -> None:
     rng = random.Random(f"{seed}:movement")
     history_rng = random.Random(f"{seed}:history")  # separate, so the last two days stay exactly as they were
+    side_rng = random.Random(f"{seed}:side-trips")  # lunch and errands, without changing who commutes where
     t0 = datetime.fromisoformat(scenario.start)
     malls = sorted({name for (name,) in conn.execute("SELECT serving_enodeb FROM critical_site WHERE kind = 'MALL'")})
     towers = _towers(conn)
@@ -160,6 +229,8 @@ def build_movement(conn: sqlite3.Connection, seed: int, scenario: Scenario) -> N
     work_cache: dict[str, list[str]] = {}
     mid_cache: dict[tuple[str, str], str | None] = {}
     mall_cache: dict[str, list[str]] = {}
+    lunch_cache: dict[str, list[str]] = {}
+    errand_cache: dict[str, list[str]] = {}
 
     def row(sub: str, start: int, tower: str, cell: str) -> tuple[object, ...]:
         lat, lng = coarsen_location(by_name[tower][1], by_name[tower][2])
@@ -186,9 +257,24 @@ def build_movement(conn: sqlite3.Connection, seed: int, scenario: Scenario) -> N
         def history_cell(tower: str, home: str = home, home_cell: str = home_cell) -> str:
             return home_cell if tower == home else history_rng.choice(cells[tower])
 
-        for start, tower, cell in _history(history_rng, t0, home, work, mid_cache[(home, work)], trips, regular, history_cell):
+        if work not in lunch_cache:
+            lunch_cache[work] = _near(towers, by_name[work], LUNCH_KM, cluster)
+        if home not in errand_cache:
+            errand_cache[home] = _near(towers, by_name[home], ERRAND_KM, cluster)
+        mid = mid_cache[(home, work)]
+        side = SideTrips(
+            side_rng,
+            [t for t in lunch_cache[work] if t not in (home, mid)],
+            [t for t in errand_cache[home] if t not in (work, mid)],
+            cells,
+        )
+
+        for start, tower, cell in _history(history_rng, t0, home, work, mid, trips, regular, history_cell, side):
             rows.append(row(sub, start, tower, cell))
-        for start, tower in _commute(rng, home, work, mid_cache[(home, work)])[1:]:  # the original first row (home, -1440) is the history's last
-            cell = home_cell if tower == home else rng.choice(cells[tower])
+        for start, tower in _commute(rng, home, work, mid, side)[1:]:  # the original first row (home, -1440) is the history's last
+            if tower == home:
+                cell = home_cell
+            else:
+                cell = side.cell(tower) if (start, tower) in side.added else rng.choice(cells[tower])
             rows.append(row(sub, start, tower, cell))
     conn.executemany("INSERT INTO subscriber_cell_visit VALUES (?, ?, ?, ?, ?, ?)", rows)

@@ -8,6 +8,7 @@ import { ChartCard, chartSpecSchema, checkChart } from "@/components/chat/chart-
 import { AreaCard, type Section } from "@/components/map/panels/area-card";
 import { HealPanel } from "@/components/map/panels/heal-panel";
 import { INTEL_TOOLS, IntelCard, type IntelTool } from "@/components/map/panels/intel-card";
+import { SUBSCRIBER_TOOLS, SubscriberCard, type SubscriberTool } from "@/components/map/panels/subscriber-card";
 import { pointInRing } from "@/lib/menara/geometry";
 
 /**
@@ -189,6 +190,26 @@ export const menaraToolkit = defineToolkit({
       },
     ]),
   ),
+  // Subscriber lists (backend/user-mcp): a card with the service mix, and halos sized by people on the map.
+  ...Object.fromEntries(
+    SUBSCRIBER_TOOLS.map((name) => [
+      name,
+      {
+        type: "backend" as const,
+        display: "standalone" as const,
+        render: ({ result }: { result?: unknown }) => (result ? <SubscriberCard tool={name} result={result} /> : <Working text="Listing subscribers…" />),
+      },
+    ]),
+  ),
+  user_call_tool: {
+    type: "backend" as const,
+    display: "standalone" as const,
+    render: ({ args, result }: { args?: unknown; result?: unknown }) => {
+      const name = (args as { name?: string } | undefined)?.name;
+      if (!name || !(SUBSCRIBER_TOOLS as readonly string[]).includes(name)) return null;
+      return result ? <SubscriberCard tool={name as SubscriberTool} result={result} /> : <Working text="Listing subscribers…" />;
+    },
+  },
   // the same tools reached through BM25 search mode (run_all starts servers with --search)
   ...Object.fromEntries(
     ["netintel_call_tool", "mlpredict_call_tool"].map((caller) => [

@@ -23,6 +23,8 @@ const COVER_TILT_DEG = 2; // uptilt that stretches a neighbour over a dead tower
 const KPI_STEP_MIN = 15; // the clock moves in these steps until a KPI sample after a change exists
 const CREW_WAIT_STEP_MIN = 30;
 const CREW_WAIT_MAX_MIN = 12 * 60;
+/** Real time each stage label stays up before the next step runs, so people watching can follow the loop. */
+const STEP_DELAY_MS = Math.max(0, Number(process.env.HEAL_STEP_DELAY_MS ?? 1800) || 0);
 const APPROVER = "elevate-ui-human";
 const RESOLVER = "elevate-self-heal";
 /** The diagnosis cause as an NTT fault type. */
@@ -145,11 +147,19 @@ function diagnose(status: Data, alarms: Alarm[], power: Data, flood: Data): Diag
 
 async function execute(run: Run) {
   const T = run.tower;
-  let tiltAttempt = 0;
+  let saidAt = 0;
   /** `blocked` marks the stage the run stopped at (a rejection, a policy denial, no crew). */
-  const say = (stage: Stage, label: string, attempt = 0, blocked = false) =>
+  const say = (stage: Stage, label: string, attempt = 0, blocked = false) => {
+    saidAt = Date.now();
     run.events.push({ type: "stage", step: null, stage, attempt, label, ...(blocked ? { blocked } : {}) });
+  };
+  /** Holds the next step until the latest stage label has been up for STEP_DELAY_MS. */
+  const pace = async () => {
+    const wait = saidAt + STEP_DELAY_MS - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  };
   const call = async (tool: string, args: Args) => {
+    await pace();
     if (run.cancelled) throw new Stopped("Run cancelled.");
     return dataOf(await callMenaraTool(tool, args));
   };
@@ -166,11 +176,16 @@ async function execute(run: Run) {
       throw new Stopped(`Policy denied ${what}: ${String(check.reason ?? "")}. The run stopped; ${leftAsIs()}.`);
     }
     say("approve", decision === "ask" ? "Policy: a human must approve" : "Policy: allowed; waiting for you");
+    await pace();
     const approvalId = String(check.approval_id ?? `local-${run.events.length}`);
+    // an "allow" would run on its own, but this UI keeps a person on every action: say so, so the policy reason
+    // ("All auto-allow conditions are met") does not read as if the question were not needed
+    const why = String(check.reason ?? decision);
+    const policy = decision === "ask" ? `Policy needs a person: ${why}` : `Policy: ${why}. It could run on its own; this demo still asks you first`;
     const asked = Date.now();
     const approved = await new Promise<boolean>((resolve) => {
       run.pending = resolve;
-      run.events.push({ type: "approval", approvalId, summary: `${what}. Policy: ${String(check.reason ?? decision)}`, action, targets, ...(purpose ? { purpose } : {}) });
+      run.events.push({ type: "approval", approvalId, summary: `${what}. ${policy}.`, action, targets, ...(purpose ? { purpose } : {}) });
     });
     const key = process.env.MENARA_APPROVER_KEY ?? "dev-only-approver-key";
     if (!approved) {
@@ -296,6 +311,62 @@ async function execute(run: Run) {
     }
   };
 
+  /**
+   * Load balancing: tilt overloaded neighbours down TILT_DEG to shed load, check the real load, and roll back a tilt
+   * that did not help (two tries). `log` records each tilt on the incident. Returns the tilt left in place, or null.
+   */
+  const shed = async (
+    hot: Neighbour[],
+    confidence: number,
+    reason: string,
+    log: (text: string) => Promise<unknown>,
+  ): Promise<{ change_id: string; towers: string[] } | null> => {
+    const targets = hot.map((n) => n.enodeb_name);
+    const before = Object.fromEntries(hot.map((n) => [n.enodeb_name, n.prb_util ?? 0]));
+    const changes = targets.map((enodeb_name) => ({ enodeb_name, tilt_delta_deg: TILT_DEG }));
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const sim = await call("twin_simulate_tilt", { changes });
+      const predicted = ((sim.tilted as { enodeb_name: string; predicted_prb: number | null }[] | undefined) ?? [])
+        .map((p) => `${p.enodeb_name} to ${p.predicted_prb ?? "?"}%`)
+        .join(", ");
+      say("simulate", `Twin: ${TILT_DEG}° downtilt takes ${predicted || "the neighbours"} (${sim.recommended ? "recommended" : "not recommended"})`, attempt);
+      const token = await authorise(
+        "ran_tilt_cells",
+        targets,
+        confidence,
+        reason,
+        `Tilt ${targets.join(", ")} down by ${TILT_DEG}° to shed load (try ${attempt})`,
+        "shed",
+      );
+      const applied = await clockNow();
+      const change = await call("ran_tilt_cells", { changes, policy_token: token, reason });
+      const made = { change_id: String(change.change_id), towers: targets };
+      activeTilt = made;
+      say("apply", `Tilt ${attempt}: ${targets.join(", ")} down ${TILT_DEG}°`, attempt);
+      await log(`Tilted ${targets.join(", ")} down ${TILT_DEG}° (${made.change_id}): ${reason}.`);
+
+      const failed: string[] = [];
+      for (const tower of targets) {
+        const after = await loadAfter(tower, applied);
+        const ok = after != null && after < THRESHOLD_PRB && after < before[tower] * 0.9;
+        say("verify", `${tower}: ${before[tower].toFixed(0)}% to ${after != null ? `${after.toFixed(0)}%` : "no sample"} ${ok ? "(relieved)" : "(not enough)"}`, attempt);
+        if (!ok) failed.push(tower);
+      }
+      if (!failed.length) return made;
+      const undo = await authorise(
+        "ran_revert_tilt",
+        targets,
+        0.99,
+        "The tilt did not relieve the load",
+        `Roll back ${made.change_id}: ${failed.join(", ")} did not improve`,
+      );
+      await call("ran_revert_change", { change_id: made.change_id, policy_token: undo, reason: "Did not improve the KPIs" });
+      say("rollback", `Rolled back ${made.change_id}`, attempt);
+      activeTilt = null;
+    }
+    return null;
+  };
+
   try {
     // ---- detect
     const status = await call("tower_get_status", { enodeb_name: T });
@@ -358,49 +429,7 @@ async function execute(run: Run) {
     // ---- simulate, then act on the neighbours: shed load from overloaded ones (load balancing), or, when the
     // tower is down and they have room, uptilt them to cover its area (cell outage compensation)
     if (hot.length) {
-      let targets = hot.map((n) => n.enodeb_name);
-      const before = Object.fromEntries(hot.map((n) => [n.enodeb_name, n.prb_util ?? 0]));
-      for (tiltAttempt = 1; tiltAttempt <= 2 && targets.length; tiltAttempt++) {
-        const changes = targets.map((enodeb_name) => ({ enodeb_name, tilt_delta_deg: TILT_DEG }));
-        const sim = await call("twin_simulate_tilt", { changes });
-        const predicted = ((sim.tilted as { enodeb_name: string; predicted_prb: number | null }[] | undefined) ?? [])
-          .map((p) => `${p.enodeb_name} to ${p.predicted_prb ?? "?"}%`)
-          .join(", ");
-        say("simulate", `Twin: ${TILT_DEG}° downtilt takes ${predicted || "the neighbours"} (${sim.recommended ? "recommended" : "not recommended"})`);
-        const token = await authorise(
-          "ran_tilt_cells",
-          targets,
-          dx.confidence,
-          `Relieve overloaded neighbours of ${T}`,
-          `Tilt ${targets.join(", ")} down by ${TILT_DEG}° to shed load (try ${tiltAttempt})`,
-          "shed",
-        );
-        const applied = await clockNow();
-        const change = await call("ran_tilt_cells", { changes, policy_token: token, reason: `Relieve the neighbours of ${T}` });
-        activeTilt = { change_id: String(change.change_id), towers: targets };
-        say("apply", `Tilt ${tiltAttempt}: ${targets.join(", ")}`, tiltAttempt);
-        await moveIncident("MITIGATING", `Tilted ${targets.join(", ")} down ${TILT_DEG}° (${activeTilt.change_id}).`);
-
-        const failed: string[] = [];
-        for (const tower of targets) {
-          const after = await loadAfter(tower, applied);
-          const ok = after != null && after < THRESHOLD_PRB && after < before[tower] * 0.9;
-          say("verify", `${tower}: ${before[tower].toFixed(0)}% to ${after != null ? `${after.toFixed(0)}%` : "no sample"} ${ok ? "(relieved)" : "(not enough)"}`, tiltAttempt);
-          if (!ok) failed.push(tower);
-        }
-        if (!failed.length) break;
-        const undo = await authorise(
-          "ran_revert_tilt",
-          activeTilt.towers,
-          0.99,
-          "The tilt did not relieve the load",
-          `Roll back ${activeTilt.change_id}: ${failed.join(", ")} did not improve`,
-        );
-        await call("ran_revert_change", { change_id: activeTilt.change_id, policy_token: undo, reason: "Did not improve the KPIs" });
-        say("rollback", `Rolled back ${activeTilt.change_id}`, tiltAttempt);
-        activeTilt = null;
-        targets = tiltAttempt < 2 ? targets : [];
-      }
+      await shed(hot, dx.confidence, `Relieve overloaded neighbours of ${T}`, (text) => moveIncident("MITIGATING", text));
     } else if (status.status === "DOWN") {
       activeTilt = await compensate(dx.confidence);
     } else {
@@ -464,10 +493,16 @@ async function execute(run: Run) {
 
     // ---- recover: undo the temporary tilt once the tower carries its own traffic, then close the incident
     if (fixed || status.status === "UP") {
-      if (activeTilt) {
+      // a tilt made for the outage (covering the dead tower, or shedding the load it pushed onto the neighbours) is
+      // undone now; a tilt made while the tower was up is load balancing and stays
+      if (activeTilt && status.status !== "UP") {
         const token = await authorise("ran_revert_tilt", activeTilt.towers, 0.99, `${T} is back`, `Restore the original tilt of ${activeTilt.towers.join(", ")} now that ${T} is back`);
+        const restoredAt = await clockNow();
         await call("ran_revert_change", { change_id: activeTilt.change_id, policy_token: token, reason: `${T} is back` });
         say("rollback", `Original tilt restored (${activeTilt.change_id})`);
+        // read the neighbours on a KPI sample taken after the restore, not on one the tilt still shaped
+        await loadAfter(activeTilt.towers[0], restoredAt);
+        activeTilt = null;
       }
       await moveIncident("RESOLVED", `${T} restored by self-heal.`);
       say("recover", `${T} is UP; incident ${incidentId} resolved`);
@@ -481,12 +516,51 @@ async function execute(run: Run) {
           const closed = ((done.resolved_ctts as string[] | undefined) ?? []).length;
           const mcmc = (done.mcmc as { can_send?: boolean; outage_duration_min?: number } | undefined) ?? {};
           const notice = mcmc.can_send ? "simulated MCMC closure notice recorded" : "no MCMC closure notice needed";
-          say("recover", `${nttId} resolved: ${closed} customer ticket${closed === 1 ? "" : "s"} closed; ${notice}`);
-          tickets = ` ${nttId} is resolved and ${closed} customer ticket${closed === 1 ? " was" : "s were"} closed with it (${notice}${mcmc.outage_duration_min != null ? ` for a ${mcmc.outage_duration_min} min outage` : ""}).`;
+          const ctts = closed
+            ? `${closed} customer ticket${closed === 1 ? "" : "s"} closed`
+            : "no customer complaints were open near the tower";
+          say("recover", `${nttId} resolved: ${ctts}; ${notice}`);
+          const withIt = closed ? `${closed} customer ticket${closed === 1 ? " was" : "s were"} closed with it` : "no customer complaints were open near the tower";
+          tickets = ` ${nttId} is resolved and ${withIt} (${notice}${mcmc.outage_duration_min != null ? ` for a ${mcmc.outage_duration_min} min outage` : ""}).`;
         });
       }
-      run.events.push({ type: "final", status: "done", text: `${T} healed: the ${dx.problem} was fixed and incident ${incidentId} is resolved.${tickets} Every action was approved by you. All data is synthetic.` });
+
+      // ---- rebalance: the outage is closed, but hours may have passed and a neighbour can be over the line from
+      // busy-hour traffic. Shed it with a downtilt (load balancing). The incident is already resolved, so the tilts
+      // are only noted on it, and a "no" here ends the rebalance, not the run.
+      let neighbourNote = "";
+      const after = ((await call("tower_get_status", { enodeb_name: T })).neighbours as Neighbour[] | undefined) ?? [];
+      const keptTilt = activeTilt;
+      const kept = new Set(keptTilt?.towers ?? []);
+      const busy = after.filter((n) => n.enodeb_name !== T && n.status === "UP" && !kept.has(n.enodeb_name) && (n.prb_util ?? 0) >= THRESHOLD_PRB);
+      const busyText = busy.map((n) => `${n.enodeb_name} at ${(n.prb_util ?? 0).toFixed(0)}%`).join(", ");
+      if (!busy.length) {
+        say("verify", `${T} is UP; neighbours under ${THRESHOLD_PRB}%`);
+      } else {
+        say("verify", `${T} is UP, but ${busyText} is over ${THRESHOLD_PRB}% (busy hour): rebalancing`);
+        try {
+          const balanced = await shed(busy, 0.95, `Relieve busy-hour load next to ${T}`, note);
+          neighbourNote = balanced
+            ? ` Busy-hour load: ${busyText} was over the ${THRESHOLD_PRB}% line, so ${balanced.towers.join(", ")} ${balanced.towers.length === 1 ? "was" : "were"} tilted down ${TILT_DEG}° (${balanced.change_id}) and ${balanced.towers.length === 1 ? "is" : "are"} under it now; that tilt stays for the busy hour.`
+            : ` Busy-hour load: ${busyText} is over the ${THRESHOLD_PRB}% line; a ${TILT_DEG}° downtilt did not relieve it and was rolled back, so it needs a person.`;
+        } catch (error) {
+          if (!(error instanceof Stopped) || run.cancelled) throw error;
+          const why = error.message.startsWith("Policy denied")
+            ? "the policy did not allow a downtilt"
+            : activeTilt && activeTilt !== keptTilt
+              ? `you kept the downtilt ${activeTilt.change_id} although it did not relieve the load`
+              : "you chose not to tilt it";
+          neighbourNote = ` Busy-hour load: ${busyText} is over the ${THRESHOLD_PRB}% line and was not rebalanced: ${why}.`;
+        }
+      }
+      await pace();
+      run.events.push({
+        type: "final",
+        status: "done",
+        text: `${T} healed: the ${dx.problem} was fixed and incident ${incidentId} is resolved.${tickets}${neighbourNote} Every action was approved by you. All data is synthetic.`,
+      });
     } else {
+      await pace();
       const stillOpen = nttId ? `incident ${incidentId} and ${nttId} stay` : `incident ${incidentId} stays`;
       run.events.push({ type: "final", status: "done", text: `${T} is still down; the neighbours were handled and ${stillOpen} open for a person. All data is synthetic.` });
     }

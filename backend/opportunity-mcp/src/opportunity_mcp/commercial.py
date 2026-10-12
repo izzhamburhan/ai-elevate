@@ -236,7 +236,7 @@ def absence_gaps(og: OpportunityGraph, intel_db: Path | None = None, predictive:
         low, high = potential["indicative_monthly_recurring_rm"]
         unserved = s["sme_count"] * (1 - s["tm_business_penetration_pct"] / 100)
         why = [f"{s['sme_count']:,} SMEs (synthetic), ~{unserved:,.0f} not on TM business broadband; {s['broadband_enquiries_90d']} enquiries in 90 days.",
-               f"Evening footfall {s['evening_footfall_mean']:,.0f}/hour; demand percentile {r['demand_percentile']:.0%} of 38 areas (synthetic)."]
+               f"Evening footfall {s['evening_footfall_mean']:,.0f}/hour; demand percentile {r['demand_percentile']:.0%} of {len(demand_pct)} areas (synthetic)."]
         constraint = {"verified_gap": f"Only {s['fibre_serviceable_pct']:.0f}% of SME premises are fibre-serviceable (synthetic serviceability records, {r['evidence']['signal_measurements']} signal measurements).",
                       "capacity_constraint": f"Busy-hour PRB p95 averages {r['evidence']['busy_prb_p95_mean']}% with {s['congested_sites']} congested site(s) (synthetic KPIs).",
                       "insufficient_information": f"No measured signal data for {s['cluster']} ({r['evidence']['signal_measurements']} measurements): coverage is unverified, not absent."}[cls]
