@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
+import duckdb
 import pytest
 from mlpredict_mcp import demo, tools
 from mlpredict_mcp.server import build_server
@@ -78,6 +80,14 @@ def test_demand_signals_schema_scores_and_order() -> None:
     key = [(s["signal"] == "steady", -s["investigation_priority"]) for s in signals]
     assert key == sorted(key), "actionable signals first, then by priority"
     assert sum(data["signal_counts"].values()) == len(signals)
+
+
+def test_demand_signals_cover_exactly_the_opportunity_graph_areas() -> None:
+    """The Opportunity Graph's area nodes are intel.duckdb's `area` rows; signals must join on the same area_id set."""
+    with duckdb.connect(os.environ["NETINTEL_DB"], read_only=True) as intel:
+        areas = {r[0] for r in intel.execute("SELECT area_id FROM area").fetchall()}
+    signals = tools.get_business_demand_signals(day="2026-10-17", limit=50)["data"]["signals"]
+    assert {s["area_id"] for s in signals} == areas
 
 
 def test_demand_signals_for_the_festival_area() -> None:

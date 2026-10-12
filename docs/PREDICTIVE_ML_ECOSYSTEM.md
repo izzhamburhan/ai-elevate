@@ -146,7 +146,7 @@ All splits are chronological: train on earlier time, test on later time. Every m
 | Test | Model | Baseline |
 |---|---|---|
 | NDCG@3 (per booth day) | **0.957** | 0.925 |
-| Top-3 hit rate | 0.762 | 0.762 (tie) |
+| Top-3 hit rate | **0.786** | 0.762 |
 | Sign-ups MAE | **2.80** | 3.13 |
 
 Each recommendation also gives:
@@ -328,6 +328,17 @@ Run from `backend/`: `uv run pytest mlpredict-mcp netintel-mcp`. The tests build
 | Linux AMD64 build on another machine | NOT VERIFIED (built and run here: Windows host, Podman WSL machine) |
 
 ## Known limitations
+
+**Models against their simple baselines (synthetic test data):**
+
+| Model | Beats its baseline? |
+|---|---|
+| Footfall | Yes: MAE 119.5 vs 196.0 |
+| Booth | Yes, narrowly: NDCG@3 0.957 vs 0.925, top-3 hit rate 0.786 vs 0.762 |
+| Congestion | Yes on error: MAE 6.59 vs 8.80. Busy-hour recall is slightly lower (0.681 vs 0.694) |
+| **Failure** | **No.** PR-AUC 0.203 vs 0.213 and ROC-AUC 0.723 vs 0.737 for an alarm heuristic. It does better only in its top 43 (precision 0.372 vs 0.302), and with 43 test outages that difference is within noise. |
+| **Anomaly** | **No.** Precision 0.822 vs 0.982 and recall 0.837 vs 0.899 for fixed thresholds. Those thresholds mirror how the incidents were generated. |
+
 
 - **Everything is synthetic.** The models learn relationships the generators put in, such as event spill, the payday bump and outage precursors. The benchmarks show the method, not real-world skill.
 - **The failure model** is no better than a simple alarm heuristic on PR-AUC or ROC-AUC, and many outages are unpredictable by design. Use it as a ranked shortlist for preventive checks.

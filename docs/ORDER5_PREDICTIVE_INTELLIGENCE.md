@@ -25,15 +25,17 @@ No data was reseeded and no model was changed. Retraining from the existing `int
 
 ## The five capabilities
 
-| # | Capability | MCP tool | Model | Synthetic test result (vs baseline) |
-|---|---|---|---|---|
-| 1 | Network failure prediction, next 24 h | `predict_site_failure_risk` | LightGBM classifier on KPIs, alarms, outages, maintenance and backhaul | PR-AUC 0.203 vs 0.213 (alarm heuristic); precision in the top 43 is 0.372 vs 0.302 |
-| 2 | Congestion forecast, up to 7 days | `forecast_network_congestion` | LightGBM regression on hourly PRB per cell | MAE 6.59 vs 8.80 % PRB (same hour last week) |
-| 3 | Aggregate footfall forecast | `predict_area_footfall` | LightGBM quantile regression (P10/P50/P90) | MAE 119.5 vs 196.0 visitors/hour |
-| 4 | Anomaly detection with evidence | `detect_network_anomalies` | Isolation Forest on deviations from each cell's usual | precision 0.822, recall 0.837 (fixed thresholds: 0.982 / 0.899) |
-| 5 | Business demand signals | `get_business_demand_signals` | Combines models 1–3 and the booth model with stated rules | not a learned model; the rules are listed in each result |
+| # | Capability | MCP tool | Model | Synthetic test result (model vs baseline) | Beats baseline? |
+|---|---|---|---|---|---|
+| 1 | Network failure prediction, next 24 h | `predict_site_failure_risk` | LightGBM classifier on KPIs, alarms, outages, maintenance and backhaul | PR-AUC 0.203 vs 0.213, ROC-AUC 0.723 vs 0.737 (alarm heuristic); precision in the top 43: 0.372 vs 0.302 | **No**, except in its top picks (within noise) |
+| 2 | Congestion forecast, up to 7 days | `forecast_network_congestion` | LightGBM regression on hourly PRB per cell | MAE 6.59 vs 8.80 % PRB (same hour last week) | Yes |
+| 3 | Aggregate footfall forecast | `predict_area_footfall` | LightGBM quantile regression (P10/P50/P90) | MAE 119.5 vs 196.0 visitors/hour | Yes |
+| 4 | Anomaly detection with evidence | `detect_network_anomalies` | Isolation Forest on deviations from each cell's usual | precision 0.822 vs 0.982, recall 0.837 vs 0.899 (fixed thresholds) | **No** |
+| 5 | Business demand signals | `get_business_demand_signals` | Combines models 1–3 and the booth model with stated rules | not a learned model; the rules are listed in each result | n/a |
 
-`rank_business_locations` (the booth sign-up model) also feeds capability 5.
+`rank_business_locations` (the booth sign-up model) also feeds capability 5. On the test data it beats ranking by footfall alone, but narrowly: NDCG@3 0.957 vs 0.925 and top-3 hit rate 0.786 vs 0.762.
+
+**Two models lose to simple baselines.** The failure model and the anomaly model both score below a hand-written rule on these synthetic labels. They are kept because they need no hand-set thresholds and they give per-site factors as evidence. Present them as ranked shortlists for checks, not as better detectors.
 
 **Weather exposure (capability 1).** The synthetic outages are not driven by rain, so the failure model does not use rain as an input. Instead, each site in the result has a `weather_exposure` block next to its score. The block holds:
 - the backhaul type;
@@ -114,15 +116,25 @@ Every result is the Menara envelope: `{synthetic: true, as_of, data, evidence, w
 }
 ```
 
-**How the Opportunity Graph can consume it.** This is a proposal for the Order 4 developer to agree; `opportunity-mcp` is not changed here.
-1. Call `get_business_demand_signals(day=<the next Saturday>, limit=50)` on `http://127.0.0.1:8126/mcp`, or through `mlpredict_call_tool` when the server runs with `--search`.
-2. Join on `area_id`, then set `demand_index`, `capacity_pressure`, `reliability_risk` and `indicators.*` as attributes of the `area` node.
-3. Use `capacity_pressure` and `reliability_risk` in the `event_surge` family's feasibility score, in place of or next to the 7-day PRB p95.
-4. Keep `signal` and `evidence` as provenance for the hypothesis.
+The contract is versioned (`schema`). New fields may be added, but existing keys will not be renamed within `-v1`. The `area_id` values are exactly the Opportunity Graph's 38 `area` nodes, both taken from `intel.duckdb` `area`. This is checked live and by `test_demand_signals_cover_exactly_the_opportunity_graph_areas`.
 
-The contract is versioned (`schema`). New fields may be added, but existing keys will not be renamed within `-v1`.
+## Integration points for the next stage (not done in this order)
 
-**Hermes.** Hermes does not register `mlpredict` or `netintel` yet: its gateway lists NetOps, Weather and Opportunity only. Hermes internals are not changed here. The suggested agent mapping is in [PREDICTIVE_ML_ECOSYSTEM.md](PREDICTIVE_ML_ECOSYSTEM.md#hermes-agent-mapping), with `get_business_demand_signals` added for the Business agent. The Elevate chat already reaches both servers through `/api/menara/call` and draws their cards.
+Neither Hermes nor the Opportunity Graph is changed in this order. The steps below are proposals, to agree with their owners.
+
+**Opportunity Graph (`backend/opportunity-mcp`)**
+1. In `graph.build()` (`opportunity_mcp/graph.py`), call `get_business_demand_signals(day=<the next Saturday>, limit=50)` on `http://127.0.0.1:8126/mcp`. When the server runs with `--search`, call it through `mlpredict_call_tool`.
+2. Join on `area_id`. Copy `demand_index`, `capacity_pressure`, `reliability_risk` and `indicators.*` onto each `area` node.
+3. In `rank._score` (`opportunity_mcp/rank.py`), use `capacity_pressure` and `reliability_risk` in the `event_surge` family's feasibility score, in place of or next to the 7-day PRB p95.
+4. Keep `signal`, `evidence` and `confidence` as provenance for each hypothesis.
+5. If MLPredict is down, fall back to today's graph-only scoring, so the 3-second discovery still works.
+
+**Hermes (`hermes-multi-agent`)**
+1. Hermes's gateway registers only NetOps, Weather and Opportunity. Add `MLPREDICT_MCP_URL` (default `http://host.docker.internal:8126/mcp`) and `NETINTEL_MCP_URL` (port 8125) next to `OPPORTUNITY_MCP_URL` in `src/elevate_hermes/config.py`, `compose.yaml` and `.env.example`.
+2. Approve tools per profile. The suggested mapping is in [PREDICTIVE_ML_ECOSYSTEM.md](PREDICTIVE_ML_ECOSYSTEM.md#hermes-agent-mapping), with `get_business_demand_signals` added for the Business agent. The read-only `predictions[]` rows give Hermes one uniform source for the ledger and the map (`geojson`).
+3. Keep the feasibility verdicts deterministic, as `feasibility.py` does today. The model scores should be evidence for the verdict, not the verdict itself.
+
+**Elevate chat:** already connected. The chat reaches both servers through the existing connectors, and the new tool renders as a "Demand signals" card (browser-checked, see Verification).
 
 ## Running it (Apple Silicon)
 
@@ -146,7 +158,7 @@ uv run python -m mlpredict_mcp.demo --out data/demo_transcript.json             
 
 ## Demo scenario and output
 
-The synthetic scenario is `SCN-UPCOMING-EVENT`: a 38,000-person festival at Stadium Shah Alam on Saturday 17 October 2026, 18:00–23:00 MYT. The full output is in [order5/demo_output.txt](order5/demo_output.txt). Each run writes every raw tool result to the transcript. The run makes 9 MCP calls in about 5 seconds. Key lines:
+The synthetic scenario is `SCN-UPCOMING-EVENT`: a 38,000-person festival at Stadium Shah Alam on Saturday 17 October 2026, 18:00–23:00 MYT. The full output is in [order5/demo_output.txt](order5/demo_output.txt). Each run writes every raw tool result to the transcript. The run makes 8 MCP calls in about 5 seconds. Key lines:
 
 1. **Analyze network.** NetIntel finds 14 of 77 Shah Alam cells at or above 85% PRB in the last 7 days. The anomaly model flags CK8606: availability dropped 99.9 points below its usual level.
 2. **Predict future risk.**
@@ -158,18 +170,25 @@ The synthetic scenario is `SCN-UPCOMING-EVENT`: a 38,000-person festival at Stad
    - **#2 Kajang** and **#3 Alor Setar** (`demand_with_headroom`): good booth or event-package candidates.
    - The booth check for Shah Alam gives about 18 sign-ups (band 16.8–21.3, RM 900), with the congestion risk flagged.
 
-## Verification (2026-10-13, MacBook Apple Silicon, Docker Desktop)
+## Verification (2026-10-13, MacBook Apple Silicon, Docker Desktop, final run on the PR head)
 
 | Check | Result |
 |---|---|
-| `mlpredict-mcp` and `netintel-mcp` tests in the image (13 new) | PASS: 49 |
+| Branch is up to date with `origin/main` (no collaborator commits after `a08879c`) | PASS |
+| `mlpredict-mcp` and `netintel-mcp` tests in the Docker image (14 new) | PASS: 50 |
 | `opportunity-mcp` and `netintel-mcp` tests on the host | PASS: 25 |
-| Retraining gives byte-identical models (all 9 model files and `metrics.json`); metrics match PREDICTIVE_ML_ECOSYSTEM.md | PASS (booth top-3 hit rate is 0.786 here; the doc says 0.762) |
-| Same demo output on 4 consecutive runs against the live servers (after the NetIntel tie-break fix) | PASS |
-| Image built with the code inside, served by `docker compose`, healthy, about 224 MB RAM, gives the same demo output as the source-mounted run | PASS |
-| `ruff` on both packages; `tsc` and `eslint` on the two frontend files | PASS (`tsc` reports only the existing `LayoutProps` error in `src/app/layout.tsx`, which needs Next's generated types) |
-| Hermes end to end with these tools | NOT VERIFIED: Hermes does not register these servers yet |
-| Chat UI rendering of the new card | NOT VERIFIED in a browser |
+| Hermes unit tests (`PYTHONPATH=src pytest`, code unchanged) | PASS: 46 |
+| Frontend `npm run lint`, `npm run build` and `npm run test:hermes` | PASS (10 Hermes UI tests) |
+| All five capabilities return results through real MCP calls to the Docker inference server | PASS (the demo calls all of them) |
+| Synthetic data rebuilt from scratch and compared with the data in use: `intel.duckdb` (13 tables, 3.47 M rows), `ml.duckdb` (5 tables) and `sme_demand.csv` (38 rows) | PASS: identical content. Every source is marked synthetic (`meta.synthetic = true` and a `synthetic` column), with seed 42. |
+| Retraining gives byte-identical model files and `metrics.json` | PASS |
+| Demo: 3 runs give byte-identical printed output and raw tool results, matching `order5/demo_output.txt` | PASS |
+| Demand-signal `area_id` set equals the Opportunity Graph's area nodes (38 = 38) | PASS |
+| Browser: the production build, real chat (DeepSeek V4 Flash) calls `get_business_demand_signals`; the "Demand signals" card renders ranked areas, and 12 features are drawn on the map coloured by severity, with no console errors | PASS |
+| Image built with the code inside, served by `docker compose`, healthy, about 224 MB RAM | PASS |
+| Hermes agents calling these tools | NOT DONE by design (see the integration points above) |
+
+**How the browser check was run.** Your `run_all` servers held ports 8125 and 8126. So the check used a production build of this branch on port 3005, with NetIntel and MLPredict moved to ports 18125 and 18126 by a temporary, uncommitted port change in `servers.ts`. That change was reverted before the final lint and build.
 
 ## Assumptions and limitations
 
