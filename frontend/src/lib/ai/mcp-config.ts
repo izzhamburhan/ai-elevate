@@ -15,7 +15,7 @@ export const mcpServerRequestSchema = z.object({
 
 export type McpServerRequest = z.infer<typeof mcpServerRequestSchema>;
 
-export const mcpServerListSchema = z.array(mcpServerRequestSchema).max(20);
+export const mcpServerListSchema = z.array(mcpServerRequestSchema).max(50);
 
 /** Result of `POST /api/mcp/inspect`. */
 export type McpServerInspection = {
