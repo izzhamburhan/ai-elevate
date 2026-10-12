@@ -4,7 +4,14 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
-import { setFilterAnimationTimeConfig, setFilterAnimationWindow, setFilterView, toggleFilterAnimation, wrapTo } from "@kepler.gl/actions";
+import {
+  interactionConfigChange,
+  setFilterAnimationTimeConfig,
+  setFilterAnimationWindow,
+  setFilterView,
+  toggleFilterAnimation,
+  wrapTo,
+} from "@kepler.gl/actions";
 import { Loader2, MapPin, MessageSquareText, Pause, Play, Route, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -51,6 +58,7 @@ const MAX_TOWERS_SAMPLED = 25;
 const TRAIL_EVENT = "menara:trail-open";
 const TRAIL_DATA = "trail_moves";
 const TRAIL_FILTER = "trail_time";
+type TooltipConfig = { config: { fieldsToShow: Record<string, { name: string; format: string | null }[]> } };
 
 
 export type Section = "towers" | "subscribers" | "usage";
@@ -266,11 +274,12 @@ export function AreaCard({
       setRoutines(routineReply.routines ?? []);
       setTrailBusy(null);
       removeOurs(["trail_"]);
-      await drawTrailPlayback(segments);
+      // routine markers first: kepler draws newer layers on top, so the trail stays visible over them
       for (const kind of ["home", "weekday", "weekend"] as const) {
         const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
         await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, ROUTINE_RADIUS);
       }
+      await drawTrailPlayback(segments);
       // fit the map to the area and the whole trail, which can leave the area
       if (segments.length && area) {
         const [west, south, east, north] = area.place.bbox;
@@ -297,6 +306,8 @@ export function AreaCard({
       tower: s.enodeb_name,
       // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
       arrived_at: s.arrived_at,
+      // what the tooltip shows: kepler prints timestamps in UTC there
+      arrived_myt: `${s.arrived_at.slice(0, 10)} ${s.arrived_at.slice(11, 16)}`,
       stay_min: Math.round(s.duration_min),
       lat: s.cell_lat,
       lng: s.cell_lng,
@@ -314,6 +325,7 @@ export function AreaCard({
       visConfig: { thickness: 3 },
     });
     await runKeplerCommand(store, MAP_ID, "add_layer", { dataId: TRAIL_DATA, type: "point", label: "Trail stops", columns: { lat: "lat", lng: "lng" }, color: TRAIL_COLOR, radius: STOP_RADIUS });
+    showTooltipFields(TRAIL_DATA, ["order", "cell", "arrived_myt", "stay_min"]);
     const times = segments.map((s) => Date.parse(s.arrived_at));
     const start = Math.min(...times);
     // one minute past the last arrival, so the last stop is inside the range
@@ -334,6 +346,15 @@ export function AreaCard({
       // the trail still shows without playback
       console.warn("[trail] time playback unavailable", e);
     }
+  };
+
+  /** Which fields kepler's hover tooltip lists for a dataset. */
+  const showTooltipFields = (dataId: string, names: string[]) => {
+    const tooltip = (store.getState().keplerGl as unknown as Record<string, { visState: { interactionConfig: { tooltip: TooltipConfig } } }>)[MAP_ID]
+      ?.visState.interactionConfig.tooltip;
+    if (!tooltip) return;
+    const fieldsToShow = { ...tooltip.config.fieldsToShow, [dataId]: names.map((name) => ({ name, format: null })) };
+    store.dispatch(wrapTo(MAP_ID, interactionConfigChange({ ...tooltip, config: { ...tooltip.config, fieldsToShow } } as never)));
   };
 
   const togglePlayback = () => {
