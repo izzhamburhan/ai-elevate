@@ -17,6 +17,7 @@ services:
       HERMES_INVESTIGATION_TIMEOUT_SECONDS: ${HERMES_INVESTIGATION_TIMEOUT_SECONDS:-1080}
       NETOPS_MCP_URL: ${NETOPS_MCP_URL:-http://host.docker.internal:8000/mcp}
       WEATHER_MCP_URL: ${WEATHER_MCP_URL:-http://host.docker.internal:8002/mcp}
+      OPPORTUNITY_MCP_URL: ${OPPORTUNITY_MCP_URL:-http://host.docker.internal:8127/mcp}
     volumes:
       - state:/state
     restart: unless-stopped

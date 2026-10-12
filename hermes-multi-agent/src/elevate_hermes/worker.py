@@ -10,7 +10,7 @@ import time
 import httpx
 
 from elevate_hermes import HERMES_REVISION, HERMES_VERSION
-from elevate_hermes.config import Settings
+from elevate_hermes.config import DELEGATION, Settings
 from elevate_hermes.contracts import compact_tool_result, final_report
 
 
@@ -39,7 +39,8 @@ def execute(request: dict) -> dict:
 
     calls = []
     shared = {"investigation_id": request["investigation_id"], "task_id": request["task_id"], "agent_id": agent_id}
-    gateway = RestrictedMcpGateway({"weather": settings.weather_url + "/mcp", "netops": settings.netops_url + "/mcp"})
+    gateway = RestrictedMcpGateway({"weather": settings.weather_url + "/mcp", "netops": settings.netops_url + "/mcp",
+                                    "opportunity": settings.opportunity_url + "/mcp"})
     discovered = asyncio.run(gateway.discover(agent_id)) if agent_id != "orchestrator" else []
     allowed_names = {definition["name"] for definition in discovered}
 
@@ -66,17 +67,21 @@ def execute(request: dict) -> dict:
                            "parent_task_id": request["task_id"], **args})
         return json.dumps(result, ensure_ascii=False)
 
-    if agent_id == "orchestrator":
+    if agent_id in DELEGATION:
+        guidance = ("Call forecast AND engineer for network/weather investigations; business for geographic commercial requests."
+                    if agent_id == "orchestrator" else
+                    "Ask engineer to validate network feasibility (busy-hour KPIs, availability, recent NTT tickets) for exact Site_IDs.")
         registry.register(name="delegate_specialist", toolset="ai_elevate_coordination",
-                          schema={"name": "delegate_specialist", "description": "Run an actual isolated specialist Hermes profile and collect its evidence-backed findings. Call forecast AND engineer for network/weather investigations; business for geographic commercial requests. Failed specialists must be reported explicitly.",
+                          schema={"name": "delegate_specialist", "description": "Run an actual isolated specialist Hermes profile and collect its evidence-backed findings. " + guidance + " Failed specialists must be reported explicitly.",
                                   "parameters": {"type": "object", "additionalProperties": False, "properties": {
-                                      "agent_id": {"type": "string", "enum": ["forecast", "engineer", "business"]},
+                                      "agent_id": {"type": "string", "enum": list(DELEGATION[agent_id])},
                                       "task": {"type": "string", "maxLength": 4000}}, "required": ["agent_id", "task"]}},
                           handler=delegate, check_fn=lambda: True)
         allowed_names.add("delegate_specialist")
 
     create_custom_toolset("ai_elevate_skills", "Read-only profile skills", tools=["skills_list", "skill_view"])
-    toolsets = ["memory", "ai_elevate_skills", "ai_elevate_coordination" if agent_id == "orchestrator" else "ai_elevate_mcp"]
+    toolsets = ["memory", "ai_elevate_skills", *{"orchestrator": ["ai_elevate_coordination"],
+                                                 "hypothesis": ["ai_elevate_mcp", "ai_elevate_coordination"]}.get(agent_id, ["ai_elevate_mcp"])]
     session_db = SessionDB()
     history = session_db.get_messages_as_conversation(request["session_id"])
     skill_names = sorted(path.parent.name for path in (profile / "skills").rglob("SKILL.md"))
@@ -92,8 +97,8 @@ def execute(request: dict) -> dict:
                         max_iterations=settings.max_iterations, max_tokens=int(os.environ.get("HERMES_MAX_OUTPUT_TOKENS", "900")), quiet_mode=True,
                         skip_context_files=True, load_soul_identity=True, skip_background_review=True,
                         save_trajectories=True, session_id=request["session_id"], session_db=session_db,
-                        ephemeral_system_prompt="Use actual approved tools for evidence and delegation. Finish with a concise report of at most 180 words that begins with a '## ' heading; do not narrate your own process or mention truncated tool output; name only tools you actually executed in this turn; full numerical tool evidence is retained separately. Preserve replay/synthetic labels, dates, source references and uncertainty. For network/weather investigations, the Orchestrator must execute both forecast and engineer, and Forecast should return geography using get_weather_forecast_geojson. Do not spend a turn writing memory: the adapter records an investigation reference through your native memory store after the turn. Your dedicated native Hermes skill has been loaded below; follow its bounded procedure and exact parameter names.\n\n" + skill_instructions,
-                        reasoning_config={"enabled": False}, run_budget_seconds=settings.investigation_timeout if agent_id == "orchestrator" else settings.task_timeout,
+                        ephemeral_system_prompt="Use actual approved tools for evidence and delegation. Finish with a concise report of at most " + ("300" if agent_id == "hypothesis" else "180") + " words that begins with a '## ' heading; do not narrate your own process or mention truncated tool output; name only tools you actually executed in this turn; full numerical tool evidence is retained separately. Preserve replay/synthetic labels, dates, source references and uncertainty. For network/weather investigations, the Orchestrator must execute both forecast and engineer, and Forecast should return geography using get_weather_forecast_geojson. Do not spend a turn writing memory: the adapter records an investigation reference through your native memory store after the turn. Your dedicated native Hermes skill has been loaded below; follow its bounded procedure and exact parameter names.\n\n" + skill_instructions,
+                        reasoning_config={"enabled": False}, run_budget_seconds=settings.investigation_timeout if agent_id in DELEGATION else settings.task_timeout,
                         request_overrides={"extra_body": {"think": False}, "parallel_tool_calls": False, "temperature": 0.0})
         actual_names = {tool.get("function", tool).get("name") for tool in agent.tools}
         permitted = allowed_names | {"memory", "skills_list", "skill_view"}

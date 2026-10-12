@@ -17,7 +17,7 @@ import httpx
 import uvicorn
 
 from elevate_hermes import HERMES_VERSION, HERMES_REVISION
-from elevate_hermes.config import AGENTS, NAMES, Settings
+from elevate_hermes.config import AGENTS, DELEGATION, NAMES, Settings
 from elevate_hermes.contracts import InvestigationRequest, DelegationRequest, source_summary, delegation_evidence, unexecuted_tool_claims
 from elevate_hermes.initialize import initialize_profiles
 from elevate_hermes.mcp_access import AGENT_TOOL_ALLOWLISTS
@@ -43,12 +43,13 @@ class Runtime:
         async with httpx.AsyncClient(timeout=4) as client:
             for service, url in (("ollama", self.settings.ollama_url + "/api/tags"),
                                  ("weather", self.settings.weather_url + "/readyz"),
-                                 ("netops", self.settings.netops_url + "/api/tools")):
+                                 ("netops", self.settings.netops_url + "/api/tools"),
+                                 ("opportunity", self.settings.opportunity_url + "/healthz")):
                 try:
                     response = await client.get(url)
                     response.raise_for_status()
                     value = response.json()
-                    available[service] = any(model["name"] == self.settings.model for model in value["models"]) if service == "ollama" else bool(value.get("ready")) if service == "weather" else isinstance(value, list) and bool(value)
+                    available[service] = any(model["name"] == self.settings.model for model in value["models"]) if service == "ollama" else bool(value.get("ready")) if service == "weather" else bool(value.get("ok")) if service == "opportunity" else isinstance(value, list) and bool(value)
                 except Exception:
                     available[service] = False
         agents = []
@@ -70,8 +71,8 @@ class Runtime:
                 except sqlite3.Error:
                     pass
             tools = sorted(name for names in AGENT_TOOL_ALLOWLISTS[role].values() for name in names)
-            if role == "orchestrator":
-                tools = ["delegate_specialist"]
+            if role in DELEGATION:
+                tools += ["delegate_specialist"]
             agents.append({"agent_id": role, "name": NAMES[role], "available": not warnings,
                            "capabilities": tools, "warnings": warnings, "soul_loaded": soul.is_file(), "skills": skills,
                            "memory_sha256": hashlib.sha256(memory.read_bytes()).hexdigest() if memory.exists() else None,
@@ -110,7 +111,7 @@ class Runtime:
                     process = await asyncio.create_subprocess_exec(sys.executable, "-m", "elevate_hermes.worker", str(request_path), str(result_path),
                                                                    stdout=log, stderr=log, env=environment)
                     self.processes.add(process)
-                    timeout = self.settings.investigation_timeout if role == "orchestrator" else self.settings.task_timeout
+                    timeout = self.settings.investigation_timeout if role in DELEGATION else self.settings.task_timeout
                     await asyncio.wait_for(process.wait(), timeout=timeout + 15)
                     if result_path.exists():
                         result = json.loads(result_path.read_text())
@@ -163,10 +164,11 @@ class Runtime:
                 def finish(current):
                     calls = [call for child in current["tasks"] for call in child["tool_calls"]]
                     current.update(summary=task.get("summary"), status=task["status"], error=task.get("error"), geojson=source_geojson(calls))
-                    children = [child for child in current["tasks"] if child["agent_id"] != "orchestrator"]
-                    if current["agent_id"] == "orchestrator":
+                    children = [child for child in current["tasks"] if child["task_id"] != task["task_id"]]
+                    if current["agent_id"] in DELEGATION:
                         if not children:
-                            current.update(status="failed", error="Orchestrator did not execute an actual specialist. No delegated findings are verified.")
+                            current.update(status="failed" if current["agent_id"] == "orchestrator" else "partial",
+                                           error=f"{NAMES[current['agent_id']]} did not execute an actual specialist. No delegated findings are verified.")
                         elif any(child["status"] != "completed" for child in children) and current["status"] == "completed":
                             current["status"] = "partial"
                     current["sources"] = [source for child in current["tasks"] for source in child["sources"]]
@@ -260,8 +262,8 @@ def build(settings: Settings | None = None) -> FastAPI:
     @app.post("/internal/delegate")
     async def delegate(body: DelegationRequest, request: Request):
         task = runtime.authorize(request, body.investigation_id, body.parent_task_id)
-        if task["agent_id"] != "orchestrator":
-            raise HTTPException(403, "Only the Orchestrator may delegate")
+        if body.agent_id not in DELEGATION.get(task["agent_id"], ()):
+            raise HTTPException(403, "This profile may not delegate to that specialist")
         job = runtime.store.get(body.investigation_id)
         if len(job["tasks"]) >= 8:
             raise HTTPException(429, "Investigation delegation limit reached")

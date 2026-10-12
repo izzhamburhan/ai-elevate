@@ -2,7 +2,7 @@ import re
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
-AgentId = Literal["orchestrator", "forecast", "business", "engineer"]
+AgentId = Literal["orchestrator", "forecast", "business", "engineer", "hypothesis"]
 Identifier = str
 
 
@@ -25,9 +25,12 @@ def source_summary(service: str, tool: str, reference: str, provenance: dict | N
     provenance = provenance or {}
     synthetic = bool(provenance.get("synthetic", service == "netops"))
     kind = provenance.get("data_kind", "local_ml_weather" if service == "weather" else "synthetic_telecom")
+    label = ("Actual local Chronos historical replay / ERA5" if service == "weather"
+             else "Synthetic Telco Opportunity Graph ranking" if service == "opportunity"
+             else "Existing synthetic NetOps telecom records" if synthetic else "Existing real geographic data / source attribution retained")
     return {
         "source_id": reference, "kind": kind,
-        "label": "Actual local Chronos historical replay / ERA5" if service == "weather" else "Existing synthetic NetOps telecom records" if synthetic else "Existing real geographic data / source attribution retained",
+        "label": label,
         "tool": tool, "reference": reference, "synthetic": synthetic,
     }
 
@@ -46,6 +49,15 @@ def compact_tool_result(result: dict, limit: int = 14000) -> dict:
         data["full_feature_count"] = len(features)
         data["agent_context_note"] = "GeoJSON sample only; full MCP geography is retained for the map."
         data["interpretation"] = "Rainfall values are Chronos predictions for historical forecast valid times, not observed weather at those times. weather_distance_km is distance from a telecom site to its cached weather location, NOT distance from the user's town. Sampled regional sites must retain their actual names and may lie outside the requested town."
+    nested = data.get("data") if isinstance(data, dict) else None
+    if isinstance(nested, dict) and isinstance(nested.get("geojson"), dict):
+        # Menara-envelope tools (netintel, opportunity): keep headline features, sample the rest
+        features = nested["geojson"].get("features", [])
+        headline = [f for f in features if f.get("properties", {}).get("kind") in {"opportunity", "opportunity_area"}]
+        others = [f for f in features if f not in headline]
+        nested["geojson"]["features"] = headline + others[:3]
+        nested["full_feature_count"] = len(features)
+        nested["agent_context_note"] = "GeoJSON sample only; full MCP geography is retained for the map."
     if len(json.dumps(bounded)) > limit:
         return {"ok": result.get("ok", False), "source": result.get("source"),
                 "warnings": result.get("warnings", []) + ["Large tool result abbreviated for agent context; full evidence remains in the audit."],

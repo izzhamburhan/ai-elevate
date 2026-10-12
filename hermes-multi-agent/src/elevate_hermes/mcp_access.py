@@ -61,12 +61,17 @@ BUSINESS_GEOGRAPHIC_TOOLS = frozenset(
     }
 )
 
+# Order 4 Telco Opportunity Graph (backend/opportunity-mcp): read-only synthetic opportunity ranking.
+OPPORTUNITY_TOOLS = frozenset({"opportunity_discover", "opportunity_explain", "opportunity_graph_summary"})
+
 AGENT_TOOL_ALLOWLISTS: dict[str, dict[str, frozenset[str]]] = {
     "orchestrator": {},  # Its delegation tools are registered by the coordinator.
     "forecast": {"weather": WEATHER_READ_ONLY_TOOLS},
     "business": {"netops": BUSINESS_GEOGRAPHIC_TOOLS},
     # Weather evidence comes only from Forecast, so the two roles cannot duplicate it.
     "engineer": {"netops": ENGINEER_NETOPS_TOOLS},
+    # Network feasibility is validated by delegating to Engineer, not by direct NetOps access.
+    "hypothesis": {"opportunity": OPPORTUNITY_TOOLS},
 }
 
 GEOGRAPHIC_NETOPS_TOOLS = frozenset(
@@ -134,6 +139,9 @@ def _provenance(service: str, tool_name: str, data: Any = None) -> dict[str, Any
     if service == "netops":
         source["data_kind"] = "real_geographic_dataset" if tool_name in GEOGRAPHIC_NETOPS_TOOLS else "synthetic_telecom"
         source["synthetic"] = tool_name not in GEOGRAPHIC_NETOPS_TOOLS
+    elif service == "opportunity":
+        source["data_kind"] = "synthetic_opportunity_graph"
+        source["synthetic"] = True
     elif service == "weather":
         source["data_kind"] = "local_ml_weather"
         source["synthetic"] = False
@@ -154,8 +162,8 @@ class RestrictedMcpGateway:
     """
 
     def __init__(self, base_urls: dict[str, str], timeout_seconds: float = 60):
-        if set(base_urls) - {"weather", "netops"}:
-            raise ValueError("Only the configured weather and netops services are supported")
+        if set(base_urls) - {"weather", "netops", "opportunity"}:
+            raise ValueError("Only the configured weather, netops and opportunity services are supported")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self.base_urls = {service: _mcp_url(url) for service, url in base_urls.items()}

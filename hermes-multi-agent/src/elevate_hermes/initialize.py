@@ -16,7 +16,7 @@ from typing import Any
 
 HERMES_REVISION = "71d34bad1045610252eda02ee79549436896e784"
 HERMES_VERSION = "0.21.7"
-AGENT_IDS = ("orchestrator", "forecast", "business", "engineer")
+AGENT_IDS = ("orchestrator", "forecast", "business", "engineer", "hypothesis")
 
 
 def _copy_missing(source: Path, destination: Path) -> None:
@@ -77,9 +77,7 @@ def initialize_profiles(
             "default": model, "provider": "custom", "base_url": base_url,
             "context_length": context_length, "ollama_num_ctx": context_length,
         }
-        role_tools = (
-            "ai_elevate_coordination" if role == "orchestrator" else "ai_elevate_mcp"
-        )
+        role_tools = {"orchestrator": ["ai_elevate_coordination"], "hypothesis": ["ai_elevate_mcp", "ai_elevate_coordination"]}.get(role, ["ai_elevate_mcp"])
         config["agent"] = {
             "max_iterations": int(os.environ.get("HERMES_MAX_ITERATIONS", "8")),
             "reasoning_effort": "none",
@@ -89,8 +87,8 @@ def initialize_profiles(
         # setting is deprecated. The worker also passes this exact selection
         # to AIAgent so startup cannot silently enable the default bundle.
         config["platform_toolsets"] = {
-            "cli": ["memory", "ai_elevate_skills", role_tools],
-            "api_server": ["memory", "ai_elevate_skills", role_tools],
+            "cli": ["memory", "ai_elevate_skills", *role_tools],
+            "api_server": ["memory", "ai_elevate_skills", *role_tools],
         }
         config["mcp_servers"] = {}  # The validated gateway registers approved tools.
         # Hermes otherwise replaces sufficiently large custom tool catalogs

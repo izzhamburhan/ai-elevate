@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const HERMES_AGENTS = ["orchestrator", "forecast", "business", "engineer"] as const;
+export const HERMES_AGENTS = ["orchestrator", "forecast", "business", "engineer", "hypothesis"] as const;
 export const hermesAgentIdSchema = z.enum(HERMES_AGENTS);
 export type HermesAgentId = z.infer<typeof hermesAgentIdSchema>;
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/);
@@ -18,7 +18,7 @@ export const hermesAgentsSchema = z.object({
   agents: z.array(z.object({
     agent_id: hermesAgentIdSchema, name: z.string(), available: z.boolean(),
     capabilities: z.array(z.string()), warnings: z.array(z.string()).default([]),
-  }).passthrough()).max(4),
+  }).passthrough()).max(HERMES_AGENTS.length),
   warnings: z.array(z.string()).default([]),
 }).passthrough();
 export type HermesAgents = z.infer<typeof hermesAgentsSchema>;

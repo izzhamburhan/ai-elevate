@@ -25,6 +25,7 @@ dev = [
     "mlpredict-mcp",
     "netintel-mcp",
     "ontology-mcp",
+    "opportunity-mcp",
     "ookla-mcp",
     "policy-mcp",
     "ran-mcp",
@@ -62,6 +63,7 @@ grid-mcp = { workspace = true }
 mlpredict-mcp = { workspace = true }
 netintel-mcp = { workspace = true }
 ontology-mcp = { workspace = true }
+opportunity-mcp = { workspace = true }
 ookla-mcp = { workspace = true }
 policy-mcp = { workspace = true }
 ran-mcp = { workspace = true }
