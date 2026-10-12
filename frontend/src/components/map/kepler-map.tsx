@@ -12,6 +12,7 @@ import { ChatFullscreenContext } from "./chat-fullscreen";
 import { MIN_PANEL_WIDTH, SidePanelWidthContext, loadPanelWidth } from "./side-panel-width";
 import { ChatMapSync } from "./chat-map-sync";
 import { DownTowerCount } from "./down-tower-count";
+import { DrawnBoundaryBanner } from "./drawn-boundary-actions";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { basemapFor, useBasemapKind } from "./basemap-choice";
 import { MAP_ID, makeKeplerStore } from "./kepler-store";
@@ -167,6 +168,7 @@ export default function KeplerMap() {
                 />
                 <TowerPulse store={store} mapId={MAP_ID} />
                 <DownTowerCount store={store} mapId={MAP_ID} panelWidth={sidePanelWidth + 2 * SIDE_PANEL_MARGIN} />
+                <DrawnBoundaryBanner store={store} mapId={MAP_ID} />
               </SidePanelWidthContext.Provider>
             </ChatFullscreenContext.Provider>
           </ChatProvider>

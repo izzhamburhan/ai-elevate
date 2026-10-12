@@ -16,6 +16,7 @@ import { followUpSuggestionAdapter } from "@/lib/ai/follow-up-suggestions";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
 import { EXAMPLE_PROMPTS } from "@/lib/example-prompts";
 import { weatherDemoChatModel } from "@/lib/weather/demo";
+import { AttachBoundaryButton } from "../drawn-boundary-actions";
 
 /**
  * Chat endpoint. Defaults to the Next.js agent route; point it at another backend
@@ -136,6 +137,7 @@ function ComposerActions() {
     <>
       <ConnectorsMenu />
       <ChatModelPicker />
+      <AttachBoundaryButton />
     </>
   );
 }

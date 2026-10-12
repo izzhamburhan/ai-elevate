@@ -8,6 +8,7 @@ import { findBuiltinConnectorByUrl } from "@/lib/ai/mcp-catalog";
 import { mcpServerListSchema } from "@/lib/ai/mcp-config";
 import { ModelConfigError, resolveChatModel } from "@/lib/ai/providers";
 import { contextTokensOf, toTurnUsage, type ChatMessageMetadata } from "@/lib/ai/usage";
+import { readBoundaryContext, BOUNDARY_MEDIA_TYPE } from "@/lib/menara/boundary-context";
 import { readTowerContext, TOWER_MEDIA_TYPE } from "@/lib/menara/tower-context";
 
 export const maxDuration = 60;
@@ -22,15 +23,28 @@ type ChatRequestBody = {
   mcpServers?: unknown;
 };
 
-/** A tower picked on the map rides as a file part (a chip in the chat); the model gets its text. */
-function withTowerContext(messages: UIMessage[]): UIMessage[] {
+/** Map contexts (towers, drawn boundaries) ride as file parts; the model gets their text. */
+function withMapContext(messages: UIMessage[]): UIMessage[] {
   return messages.map((message) =>
-    message.role === "user" && message.parts.some((p) => p.type === "file" && p.mediaType === TOWER_MEDIA_TYPE)
+    message.role === "user" &&
+    message.parts.some(
+      (p) =>
+        p.type === "file" &&
+        (p.mediaType === TOWER_MEDIA_TYPE || p.mediaType === BOUNDARY_MEDIA_TYPE),
+    )
       ? {
           ...message,
-          parts: message.parts.map((p) =>
-            p.type === "file" && p.mediaType === TOWER_MEDIA_TYPE ? { type: "text" as const, text: readTowerContext(p.url) } : p,
-          ),
+          parts: message.parts.map((p) => {
+            if (p.type === "file") {
+              if (p.mediaType === TOWER_MEDIA_TYPE) {
+                return { type: "text" as const, text: readTowerContext(p.url) };
+              }
+              if (p.mediaType === BOUNDARY_MEDIA_TYPE) {
+                return { type: "text" as const, text: readBoundaryContext(p.url) };
+              }
+            }
+            return p;
+          }),
         }
       : message,
   );
@@ -91,7 +105,7 @@ export async function POST(req: Request) {
 
     return await createAgentUIStreamResponse({
       agent,
-      uiMessages: withTowerContext(messages),
+      uiMessages: withMapContext(messages),
       abortSignal: req.signal,
       messageMetadata,
       onFinish: () => mcp.close(),
