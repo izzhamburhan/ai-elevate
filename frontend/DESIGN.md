@@ -159,8 +159,11 @@ OpenStreetMap tiles (`npm run basemap`, see the README), so roads and labels sta
 - Without the tile files, the same ids fall back to OpenStreetMap's standard raster tiles. Its
   dark map is the tiles inverted, hue-rotated 195°, dimmed and desaturated, as the reference does
   with a CSS filter. Here it is MapLibre raster paint, so the data layers on top are never filtered.
-- The theme picks one (`BASEMAP_FOR_THEME`). Chats saved on the old CARTO basemaps switch to them
-  too.
+- `osm-dark` / `osm-light`: OpenStreetMap's raster tiles with the same treatment, always offered.
+  The Basemap map control (`basemap-control.tsx`, in kepler's control column) switches between
+  Elevate and OpenStreetMap. The choice is saved under `elevate-basemap` and applies to every chat.
+- The theme and that choice pick one (`basemapFor` in `basemap-choice.ts`). Chats saved on any of
+  these, or on the old CARTO basemaps, switch to it too.
 - kepler misses the basemap's credit on first load, so `kepler-map.tsx` re-announces the style once
   the map is idle. Keep that: OpenStreetMap's license requires the credit.
 

@@ -17,6 +17,9 @@ import { PMTiles, Protocol } from "pmtiles";
 
 export const BASEMAP_DARK = "elevate-dark";
 export const BASEMAP_LIGHT = "elevate-light";
+/** OpenStreetMap's raster tiles with the same theme treatment, offered beside the vector basemaps. */
+export const BASEMAP_OSM_DARK = "osm-dark";
+export const BASEMAP_OSM_LIGHT = "osm-light";
 
 /** Folder with malaysia.pmtiles, fonts/ and sprites/. Set NEXT_PUBLIC_BASEMAP_URL to serve it elsewhere. */
 const BASEMAP_URL = process.env.NEXT_PUBLIC_BASEMAP_URL || "/basemap/";
@@ -169,6 +172,9 @@ export function loadBasemaps() {
   return loading;
 }
 
+/** Whether the self-hosted vector tiles loaded; without them the Elevate basemaps are raster too. */
+export const hasVectorTiles = () => Boolean(vectorTiles);
+
 type VectorTiles = NonNullable<typeof vectorTiles>;
 
 function vectorStyle(name: string, flavor: Flavor, sprite: "light" | "dark", tiles: VectorTiles) {
@@ -210,6 +216,16 @@ function osmStyle(name: string, background: string, paint: Record<string, number
   };
 }
 
+/** The Menara dark look, from the light tiles. */
+const OSM_DARK_PAINT = {
+  "raster-brightness-min": 0.82,
+  "raster-brightness-max": 0,
+  "raster-hue-rotate": 195,
+  "raster-saturation": -0.45,
+  "raster-contrast": -0.08,
+};
+const OSM_LIGHT_PAINT = { "raster-saturation": -0.55, "raster-contrast": -0.1, "raster-brightness-min": 0.08 };
+
 const defaults = INITIAL_MAP_STYLE.mapStyles as Record<string, { icon?: string }>;
 
 /** kepler `mapStyles` entries; the style objects are inline, so kepler never fetches them. */
@@ -224,13 +240,7 @@ function elevateBasemaps() {
       ...layerGroups,
       style: tiles
         ? vectorStyle("Elevate dark", DARK_FLAVOR, "dark", tiles)
-        : osmStyle("Elevate dark", "#14111d", {
-            "raster-brightness-min": 0.82,
-            "raster-brightness-max": 0,
-            "raster-hue-rotate": 195,
-            "raster-saturation": -0.45,
-            "raster-contrast": -0.08,
-          }),
+        : osmStyle("Elevate dark", "#14111d", OSM_DARK_PAINT),
     },
     [BASEMAP_LIGHT]: {
       id: BASEMAP_LIGHT,
@@ -239,11 +249,19 @@ function elevateBasemaps() {
       ...layerGroups,
       style: tiles
         ? vectorStyle("Elevate light", LIGHT_FLAVOR, "light", tiles)
-        : osmStyle("Elevate light", "#f6f5f8", {
-            "raster-saturation": -0.55,
-            "raster-contrast": -0.1,
-            "raster-brightness-min": 0.08,
-          }),
+        : osmStyle("Elevate light", "#f6f5f8", OSM_LIGHT_PAINT),
+    },
+    [BASEMAP_OSM_DARK]: {
+      id: BASEMAP_OSM_DARK,
+      label: "OpenStreetMap dark",
+      icon: defaults["dark-matter"]?.icon,
+      style: osmStyle("OpenStreetMap dark", "#14111d", OSM_DARK_PAINT),
+    },
+    [BASEMAP_OSM_LIGHT]: {
+      id: BASEMAP_OSM_LIGHT,
+      label: "OpenStreetMap light",
+      icon: defaults.positron?.icon,
+      style: osmStyle("OpenStreetMap light", "#f6f5f8", OSM_LIGHT_PAINT),
     },
   };
 }
