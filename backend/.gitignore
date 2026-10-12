@@ -8,3 +8,6 @@ __pycache__/
 data/menara.db
 data/menara.db-wal
 data/menara.db-shm
+data/intel.duckdb
+data/intel.duckdb.wal
+data/intel.tmp.duckdb
