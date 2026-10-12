@@ -42,7 +42,8 @@ function instructions(toolNames: string[] | undefined): string {
 ${describeTools(toolNames)}
 
 - Only suggest a question one of these tools can answer. If none fits a direction, pick another direction.
-- Never suggest asking again for something the assistant said it can't do or has no tool or data for.`
+- Never suggest asking again for something the assistant said it can't do or has no tool or data for.
+- Never suggest approving, rejecting or signing an approval: only a person can, outside the chat.`
     : `It works with ${DEFAULT_CAPABILITIES}.
 
 - Only suggest what the assistant can do on the map.`;

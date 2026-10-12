@@ -156,7 +156,7 @@ export function AreaDemo() {
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat label="Towers" value={inside.length} />
           <Stat label="Degraded" value={degraded} className="text-mk-amber" />
-          <Stat label="Down" value={down} className="text-mk-red" />
+          <Stat label="Outage" value={down} className="text-mk-red" />
           <Stat label="People (est.)" value={people ? people.toLocaleString("en-US") : "—"} />
         </dl>
 

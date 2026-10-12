@@ -6,7 +6,7 @@ import { Check, Loader2, MapPinned, ShieldAlert, Wrench, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button";
 import { FLOATING_EVENT, useMapDraw } from "@/lib/menara/map-draw";
-import { TOWER_STATUS_COLOR } from "@/lib/map-colors";
+import { TOWER_STATUS_COLOR, towerStatusLabel } from "@/lib/map-colors";
 import { cn } from "@/lib/utils";
 
 type Stage = "detect" | "diagnose" | "simulate" | "approve" | "apply" | "verify" | "rollback" | "recover";
@@ -300,11 +300,11 @@ export function HealPanel({ runId }: { runId?: string }) {
       const ok = up.filter((n) => !n.tilted && (n.prb_now ?? 0) < state.threshold);
       await draw.addPoints("heal_ok", "Neighbours OK", ok.map(row), MAP_COLORS.ok, 40);
       // neighbours that are faulty themselves
-      await draw.addPoints("heal_down", "Neighbours down", neighbours.filter((n) => n.status === "DOWN").map(row), MAP_COLORS.failed, 40);
+      await draw.addPoints("heal_down", "Neighbours in outage", neighbours.filter((n) => n.status === "DOWN").map(row), MAP_COLORS.failed, 40);
       await draw.addPoints("heal_degraded", "Neighbours degraded", neighbours.filter((n) => n.status === "DEGRADED").map(row), MAP_COLORS.degraded, 40);
       await draw.addPoints("heal_hot", "Neighbours overloaded", hot.map(row), MAP_COLORS.hot, 55);
       await draw.addPoints("heal_tilted", "Neighbours re-tilted", neighbours.filter((n) => n.tilted).map(row), MAP_COLORS.tilted, 60);
-      if (failed) await draw.addPoints("heal_failed", `${failed.name} (${failed.status})`, [row(failed)], towerColor(failed.status), 75);
+      if (failed) await draw.addPoints("heal_failed", `${failed.name} (${towerStatusLabel(failed.status)})`, [row(failed)], towerColor(failed.status), 75);
       if (!framed.current) {
         framed.current = true;
         const lngs = towers.map((t) => t.lng);
@@ -489,7 +489,7 @@ export function HealPanel({ runId }: { runId?: string }) {
                   </section>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                     {[
-                      ["Down", MAP_COLORS.failed],
+                      ["Outage", MAP_COLORS.failed],
                       ["Degraded", MAP_COLORS.degraded],
                       ["Overloaded", MAP_COLORS.hot],
                       ["OK", MAP_COLORS.ok],
