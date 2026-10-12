@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { AssistantRuntimeProvider, AuiConfig, Tools, useRemoteThreadListRuntime } from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/ai-sdk";
+import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 
 import { ModelSelector } from "@/components/assistant-ui/elements/model-selector.aui";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
@@ -39,7 +40,8 @@ function useChatThreadRuntime() {
         body: () => ({ mcpServers: enabledConnectorRequests() }),
       }),
   );
-  return useChatRuntime({ transport });
+  // resume the answer once a chat tool that runs in the browser (the Map & area and Self-heal cards) has returned
+  return useChatRuntime({ transport, sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls });
 }
 
 /**

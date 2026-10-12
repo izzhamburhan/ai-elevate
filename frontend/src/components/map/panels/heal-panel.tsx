@@ -177,8 +177,9 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
 
   useEffect(() => {
     if (status !== "done" && status !== "cancelled" && status !== "error") return;
-    const timer = setTimeout(() => void refreshState(), 0);
-    return () => clearTimeout(timer);
+    // once now and once a little later, so the chart shows the settled result
+    const timers = [0, 2500].map((ms) => setTimeout(() => void refreshState(), ms));
+    return () => timers.forEach(clearTimeout);
   }, [status, refreshState]);
 
   const start = async () => {
@@ -237,25 +238,29 @@ export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
       )}
     >
       <h2 className={cn("truncate font-bold tracking-tight", embedded ? "text-sm" : "text-base")}>Self-heal</h2>
-      <p className="text-[12px] leading-5 text-muted-foreground">
-        A flood cuts power to a tower. Watch the loop detect it, simulate a fix, ask a human, apply it, check the result and roll back if it fails.
-        A scripted replay (no model key) drives the real MCP servers.
-      </p>
+      {!embedded ? (
+        <p className="text-[12px] leading-5 text-muted-foreground">
+          A flood cuts power to a tower. Watch the loop detect it, simulate a fix, ask a human, apply it, check the result and roll back if it fails.
+          A scripted replay (no model key) drives the real MCP servers.
+        </p>
+      ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={start} disabled={running} className="h-9 rounded-[10px]">
-          {running ? <Loader2 className="animate-spin" /> : <Play />}
-          Run self-heal (replay)
-        </Button>
-        {running ? (
-          <Button variant="outline" onClick={cancel} className="h-9 rounded-[10px]">
-            <Square /> Cancel
+      {!embedded ? (
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={start} disabled={running} className="h-9 rounded-[10px]">
+            {running ? <Loader2 className="animate-spin" /> : <Play />}
+            Run self-heal (replay)
           </Button>
-        ) : null}
-        <Button variant="ghost" onClick={reset} disabled={running} className="h-9 rounded-[10px]" title="Clear incidents, approvals, RAN changes and the clock">
-          <RotateCcw /> Reset demo
-        </Button>
-      </div>
+          {running ? (
+            <Button variant="outline" onClick={cancel} className="h-9 rounded-[10px]">
+              <Square /> Cancel
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={reset} disabled={running} className="h-9 rounded-[10px]" title="Clear incidents, approvals, RAN changes and the clock">
+            <RotateCcw /> Reset demo
+          </Button>
+        </div>
+      ) : null}
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
 

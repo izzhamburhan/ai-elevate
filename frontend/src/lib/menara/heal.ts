@@ -177,6 +177,8 @@ type Run = {
   status: "running" | "done" | "cancelled" | "error";
   events: RunEvent[];
   cancelled: boolean;
+  /** Demo mode: approve every policy ask without waiting for a person. Off unless the user asked for it. */
+  autoApprove: boolean;
   pending: ((approve: boolean) => void) | null;
 };
 
@@ -187,9 +189,9 @@ export function currentRun(): Run | undefined {
   return holder.__elevateHealRun;
 }
 
-export function startReplay(): string {
+export function startReplay(autoApprove = false): string {
   if (holder.__elevateHealRun?.status === "running") throw new Error("A self-heal run is already in progress.");
-  const run: Run = { id: crypto.randomUUID().slice(0, 8), status: "running", events: [], cancelled: false, pending: null };
+  const run: Run = { id: crypto.randomUUID().slice(0, 8), status: "running", events: [], cancelled: false, autoApprove, pending: null };
   holder.__elevateHealRun = run;
   void execute(run);
   return run.id;
@@ -239,10 +241,12 @@ async function execute(run: Run) {
           const approvalId = String(data.approval_id);
           const summary = `${args.action} on ${(args.targets as string[]).join(", ")} (confidence ${args.confidence}). Policy says: ${data.reason ?? "approval needed"}`;
           run.events.push({ type: "stage", step: i, ...tracker.observe(name, args, { decision: "ask" })! });
-          const approved = await new Promise<boolean>((resolve) => {
-            run.pending = resolve;
-            run.events.push({ type: "approval", approvalId, summary });
-          });
+          const approved = run.autoApprove
+            ? true
+            : await new Promise<boolean>((resolve) => {
+                run.pending = resolve;
+                run.events.push({ type: "approval", approvalId, summary });
+              });
           const key = process.env.MENARA_APPROVER_KEY ?? "dev-only-approver-key";
           if (!approved) {
             await callMenaraTool("policy_reject", { approval_id: approvalId, approver: APPROVER, approver_key: key });
@@ -251,7 +255,13 @@ async function execute(run: Run) {
           }
           const granted = await callMenaraTool("policy_approve", { approval_id: approvalId, approver: APPROVER, approver_key: key });
           result = { decision: "approved_by_human", approval_id: approvalId, token: dataOf(granted).token };
-          run.events.push({ type: "stage", step: null, stage: "approve", attempt: 0, label: POLICY_WORDS.approved_by_human });
+          run.events.push({
+            type: "stage",
+            step: null,
+            stage: "approve",
+            attempt: 0,
+            label: run.autoApprove ? "Policy: approved automatically (demo)" : POLICY_WORDS.approved_by_human,
+          });
         } else {
           run.events.push({ type: "stage", step: i, ...tracker.observe(name, args, data)! });
         }

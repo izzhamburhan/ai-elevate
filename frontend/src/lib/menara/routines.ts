@@ -172,12 +172,8 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return 2 * 6371.0088 * Math.asin(Math.sqrt(a));
 }
 
-/** The routine lines for one subscriber, with the known sites near each place named (cell level, synthetic). */
-export async function subscriberRoutines(msisdnHash: string, windowMin = DEFAULT_WINDOW_MIN) {
-  const trail = dataOf(await callMenaraTool("user_get_trail", { msisdn_hash: msisdnHash, window_min: windowMin })) as unknown as Trail;
-  const position: Record<string, [number, number]> = {};
-  for (const seg of trail.segments ?? []) position[seg.enodeb_name] = [seg.cell_lat, seg.cell_lng];
-
+/** Known sites within 2.5 km of each tower (cell level, synthetic), nearest first. */
+async function nearbyFor(position: Record<string, [number, number]>): Promise<Record<string, Site[]>> {
   const nearby: Record<string, Site[]> = {};
   await Promise.all(
     Object.entries(position).map(async ([tower, [lat, lng]]) => {
@@ -199,5 +195,51 @@ export async function subscriberRoutines(msisdnHash: string, windowMin = DEFAULT
       nearby[tower] = found;
     }),
   );
+  return nearby;
+}
+
+const positionsOf = (trail: Trail) => {
+  const position: Record<string, [number, number]> = {};
+  for (const seg of trail.segments ?? []) position[seg.enodeb_name] = [seg.cell_lat, seg.cell_lng];
+  return position;
+};
+
+/** The routine lines for one subscriber, with the known sites near each place named (cell level, synthetic). */
+export async function subscriberRoutines(msisdnHash: string, windowMin = DEFAULT_WINDOW_MIN) {
+  const trail = dataOf(await callMenaraTool("user_get_trail", { msisdn_hash: msisdnHash, window_min: windowMin })) as unknown as Trail;
+  const position = positionsOf(trail);
+  const nearby = await nearbyFor(position);
   return { window_start: trail.window_start, window_min: trail.window_min, routines: routinesFor(trail, nearby, position) };
+}
+
+const partOfDay = (hour: number) => (hour < 5 ? "night" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "night");
+
+const STORY_RULES =
+  "Describe this subscriber's movements in plain language, in a few short sentences. Use only these facts. Name places only from " +
+  "nearby_sites and say 'near', never 'at' (locations are cell level, accurate to about a kilometre). If a tower has no known site, say " +
+  "there is no known site near it. Do not invent places, reasons or identities; the subscriber is synthetic and anonymous. " +
+  "Mention the 4-week routine (home, weekdays, weekends) when it is given.";
+
+/** Everything a model needs to describe one subscriber's trail: the last 24 hours, the sites near each tower, the 4-week routine. */
+export async function subscriberFacts(msisdnHash: string) {
+  const [day, weeks] = await Promise.all([
+    callMenaraTool("user_get_trail", { msisdn_hash: msisdnHash, window_min: 1440 }).then((r) => dataOf(r) as unknown as Trail),
+    subscriberRoutines(msisdnHash),
+  ]);
+  const position = positionsOf(day);
+  const nearby = await nearbyFor(position);
+  return {
+    rules: STORY_RULES,
+    subscriber: msisdnHash,
+    precision: "cell level (tower position)",
+    last_24h: (day.segments ?? []).map((s) => ({
+      tower: s.enodeb_name,
+      from: s.arrived_at.slice(11, 16),
+      to: s.left_at ? s.left_at.slice(11, 16) : "now",
+      minutes: Math.round(s.duration_min),
+      part_of_day: partOfDay(Number(s.arrived_at.slice(11, 13))),
+    })),
+    towers: Object.keys(position).map((tower) => ({ tower, nearby_sites: (nearby[tower] ?? []).map((s) => `${s.name} (${s.distance_km} km)`) })),
+    routine_last_4_weeks: weeks.routines.map((r) => r.sentence),
+  };
 }
