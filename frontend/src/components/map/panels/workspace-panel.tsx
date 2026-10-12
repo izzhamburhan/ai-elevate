@@ -88,11 +88,11 @@ export function WorkspacePanel({ showAddDataModal, uiStateActions }: WorkspacePa
       </nav>
 
       <div className="flex flex-col gap-2">
-        <Button variant="outline" className="h-10 w-full rounded-[10px]" onClick={showAddDataModal}>
+        <Button variant="outline" className="h-10 w-full" onClick={showAddDataModal}>
           <Upload />
           Import data
         </Button>
-        <Button className="h-10 w-full rounded-[10px]">
+        <Button className="h-10 w-full">
           <Plus />
           New map
         </Button>

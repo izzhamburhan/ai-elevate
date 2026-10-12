@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { ActionTypes, addDataToMap, mapStyleChange, resetMapConfig, wrapTo } from "@kepler.gl/actions";
-import { processCsvData } from "@kepler.gl/processors";
+import { ActionTypes, addDataToMap, mapStyleChange, resetMapConfig, updateMap, wrapTo } from "@kepler.gl/actions";
 import KeplerGlSchema from "@kepler.gl/schemas";
 
 import { loadMapSnapshot, saveMapSnapshot } from "@/components/chat/chat-history";
 import { getTheme } from "@/lib/theme";
 
-import { BASEMAP_FOR_THEME, MALAYSIA_VIEW, type makeKeplerStore } from "./kepler-store";
+import { DOWN_TOWERS_DATA_ID, downTowersAction } from "./down-towers";
+import { BASEMAP_FOR_THEME, PENINSULA_VIEW, type makeKeplerStore } from "./kepler-store";
 
 type KeplerStore = ReturnType<typeof makeKeplerStore>;
 type KeplerAction = { type: (typeof ActionTypes)[keyof typeof ActionTypes] };
@@ -30,11 +30,11 @@ type KeplerInstance = {
   mapStyle: { styleType: string };
 };
 
-const SAMPLE_DATA_URL = "/data/world-cities.csv";
 /** Panning fires many updates; save once the map has been still for this long. */
 const SAVE_DELAY_MS = 1000;
 
-const THEME_BASEMAPS: readonly string[] = Object.values(BASEMAP_FOR_THEME);
+/** Basemaps that follow the app theme; CARTO's are the ones chats were saved with before the OSM basemaps. */
+const THEME_BASEMAPS: readonly string[] = [...Object.values(BASEMAP_FOR_THEME), "positron", "dark-matter"];
 
 /** Changes to any of these mean the chat's map changed (hover/selection state is left out). */
 const signature = ({ visState: v, mapState, mapStyle }: KeplerInstance) => [
@@ -67,63 +67,19 @@ function waitFor(store: KeplerStore, ready: () => boolean, timeoutMs = 15_000) {
   });
 }
 
-let sampleCsv: Promise<string> | undefined;
-
-/** The map a new chat starts with: the sample cities over Malaysia. */
-async function addSampleData(dispatch: (action: KeplerAction) => void) {
-  sampleCsv ??= fetch(SAMPLE_DATA_URL).then((res) => res.text());
-  const data = processCsvData(await sampleCsv);
-  if (!data) throw new Error("Sample CSV could not be parsed");
-  dispatch(
-    addDataToMap({
-      datasets: {
-        info: { id: "cities", label: "World cities (sample)" },
-        data,
-      },
-      // keep the Malaysia view instead of fitting to the (world-wide) sample data
-      options: { centerMap: false },
-      config: {
-        version: "v1",
-        config: {
-          mapState: MALAYSIA_VIEW,
-          visState: {
-            layers: [
-              {
-                id: "cities-points",
-                type: "point",
-                config: {
-                  dataId: "cities",
-                  label: "Cities",
-                  columns: { lat: "lat", lng: "lng" },
-                  isVisible: true,
-                  color: [124, 92, 255],
-                  visConfig: {
-                    radius: 14,
-                    opacity: 0.8,
-                    filled: true,
-                    outline: false,
-                    radiusRange: [4, 36],
-                    colorRange: {
-                      name: "Lavender",
-                      type: "sequential",
-                      category: "Custom",
-                      colors: ["#e2d6ff", "#bd9fff", "#9b7bff", "#7c5cff", "#5b3fd6", "#3d2a99"],
-                    },
-                  },
-                },
-                visualChannels: {
-                  colorField: { name: "population", type: "integer" },
-                  colorScale: "quantile",
-                  sizeField: { name: "population", type: "integer" },
-                  sizeScale: "sqrt",
-                },
-              },
-            ],
-          },
-        },
-      },
-    }),
-  );
+/**
+ * The map a new chat starts with: the towers that are down right now, over Peninsular Malaysia.
+ * Resolves to whether they were added; without the tower MCP the map starts empty on the same view.
+ */
+async function addStartingData(dispatch: (action: KeplerAction) => void, isCurrent: () => boolean) {
+  const action = await downTowersAction();
+  if (!isCurrent()) return false;
+  if (!action) {
+    dispatch(updateMap(PENINSULA_VIEW));
+    return false;
+  }
+  dispatch(action);
+  return true;
 }
 
 /**
@@ -179,9 +135,9 @@ function createChatMapSync(store: KeplerStore, mapId: string) {
     dispatch(resetMapConfig());
     if (!snapshot) {
       dispatch(mapStyleChange(BASEMAP_FOR_THEME[getTheme()]));
-      await addSampleData(dispatch);
-      if (!isCurrent()) return;
-      await waitFor(store, () => Boolean(read()?.visState.datasets.cities));
+      if (await addStartingData(dispatch, isCurrent)) {
+        await waitFor(store, () => Boolean(read()?.visState.datasets[DOWN_TOWERS_DATA_ID]));
+      }
       return;
     }
 

@@ -4,8 +4,8 @@ import { localModelLabel, weatherDemoBasemap, weatherDemoChatModel } from "../sr
 
 test("cached pitch uses the network-free basemap across both themes", () => {
   for (const theme of ["light", "dark"]) assert.equal(weatherDemoBasemap(theme, true), "no_map");
-  assert.equal(weatherDemoBasemap("light", false), "positron");
-  assert.equal(weatherDemoBasemap("dark", false), "dark-matter");
+  assert.equal(weatherDemoBasemap("light", false), "elevate-light");
+  assert.equal(weatherDemoBasemap("dark", false), "elevate-dark");
 });
 
 test("cached pitch selects the existing local model without changing normal defaults", () => {

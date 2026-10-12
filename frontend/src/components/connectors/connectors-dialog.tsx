@@ -598,7 +598,7 @@ export function ConnectorAvatar({
           !status || status.state === "connecting"
             ? "bg-muted-foreground/40"
             : status.state === "connected"
-              ? "bg-emerald-500"
+              ? "bg-green"
               : "bg-destructive",
         )}
       />
@@ -633,8 +633,8 @@ function StatusBadge({ status }: { status: ConnectorStatus | undefined }) {
   }
   if (status.state === "error") return <Badge variant="destructive">Error</Badge>;
   return (
-    <Badge variant="secondary" className="text-emerald-700 dark:text-emerald-400">
-      <span className="size-1.5 rounded-full bg-emerald-500" />
+    <Badge variant="secondary" className="text-green">
+      <span className="size-1.5 rounded-full bg-green" />
       Connected
     </Badge>
   );

@@ -11,6 +11,8 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
+  /* Editorial serif (Newsreader) for the wordmark and the site's hero headlines. */
+  --font-display: var(--font-newsreader);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,6 +47,14 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
   --color-brand-strong: var(--brand-strong);
+  /* Status and highlight hues, the same ones the site uses (`mk-green` etc.). */
+  --color-green: var(--green);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-blue: var(--blue);
+  --color-magenta: var(--magenta);
+  --color-teal: var(--teal);
+  --color-violet: var(--violet);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -73,47 +83,95 @@
 }
 
 /*
- * Design tokens follow Ideogram's workspace UI:
- * near-black ink (#232425), white surfaces, hairline #E2E2E4 borders,
- * lavender (#BD9FFF) accent, 10px control radius, 28px prompt radius.
+ * Elevate palette: the one set of raw colors behind both the site (`mk-*` tokens, scoped to
+ * `.marketing`) and the workspace (shadcn tokens below). Ink and paper carry a faint violet;
+ * night is the cinematic dark. Each accent comes in a text-safe shade for light surfaces
+ * (all ≥ 4.5:1 on white) and a bright shade for dark ones. Change a color here, not in a scope.
  */
 :root {
-  --background: #ffffff;
-  --foreground: #232425;
-  --card: #ffffff;
-  --card-foreground: #232425;
-  --popover: #ffffff;
-  --popover-foreground: #232425;
-  --primary: #232425;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #232425;
-  --muted: #f4f4f5;
-  --muted-foreground: #6f6f76;
-  --accent: #f1f1f2;
-  --accent-foreground: #232425;
-  --destructive: #e5484d;
-  --border: #e2e2e4;
-  --input: #e2e2e4;
-  --ring: #bd9fff;
-  --brand: #bd9fff;
-  --brand-foreground: #272038;
+  --palette-paper: #ffffff;
+  --palette-mist: #f6f5f8;
+  --palette-ink: #1f1b2d;
+  --palette-ink-muted: #59566a;
+  --palette-ink-faint: #6b6879;
+  --palette-ink-line: rgb(0 0 0 / 0.08);
+  --palette-ink-line-strong: rgb(0 0 0 / 0.15);
+  --palette-night: #14111d;
+  --palette-night-surface: #1c1927;
+  --palette-night-raised: #25212f;
+  --palette-snow: #fafafa;
+  --palette-snow-muted: #b3b0bf;
+  --palette-snow-faint: #8f8c9c;
+  --palette-snow-line: rgb(255 255 255 / 0.1);
+  --palette-snow-line-strong: rgb(255 255 255 / 0.2);
+  --palette-lavender: #bd9fff;
+  --palette-lavender-hover: #cdb6ff;
+  --palette-lavender-ink: #1b1528;
+  --palette-green-on-light: #15803d;
+  --palette-amber-on-light: #b45309;
+  --palette-red-on-light: #c81e1e;
+  --palette-blue-on-light: #2563eb;
+  --palette-magenta-on-light: #be185d;
+  --palette-teal-on-light: #0f766e;
+  --palette-violet-on-light: #6d4aff;
+  --palette-green-on-dark: #3ddc84;
+  --palette-amber-on-dark: #ffb224;
+  --palette-red-on-dark: #ff6b78;
+  --palette-blue-on-dark: #6aa6ff;
+  --palette-magenta-on-dark: #ff5cb3;
+  --palette-teal-on-dark: #19e6c1;
+  --palette-violet-on-dark: #b79bff;
+}
+
+/*
+ * Workspace tokens, in the site's art direction: violet-tinted ink on paper, night surfaces in
+ * dark mode, lavender accent, pill buttons, 28px prompt radius. Hover fills (`accent`) are ink
+ * or snow at low opacity, as on the site.
+ */
+:root {
+  --background: var(--palette-paper);
+  --foreground: var(--palette-ink);
+  --card: var(--palette-paper);
+  --card-foreground: var(--palette-ink);
+  --popover: var(--palette-paper);
+  --popover-foreground: var(--palette-ink);
+  --primary: var(--palette-ink);
+  --primary-foreground: var(--palette-paper);
+  --secondary: var(--palette-mist);
+  --secondary-foreground: var(--palette-ink);
+  --muted: var(--palette-mist);
+  --muted-foreground: var(--palette-ink-muted);
+  --accent: color-mix(in srgb, var(--palette-ink) 6%, var(--palette-paper));
+  --accent-foreground: var(--palette-ink);
+  --destructive: var(--palette-red-on-light);
+  --border: var(--palette-ink-line);
+  --input: var(--palette-ink-line-strong);
+  --ring: var(--palette-violet-on-light);
+  --brand: var(--palette-lavender);
+  --brand-foreground: var(--palette-lavender-ink);
   --brand-soft: #efe9ff;
-  --brand-strong: #7c5cff;
+  --brand-strong: var(--palette-violet-on-light);
+  --green: var(--palette-green-on-light);
+  --amber: var(--palette-amber-on-light);
+  --red: var(--palette-red-on-light);
+  --blue: var(--palette-blue-on-light);
+  --magenta: var(--palette-magenta-on-light);
+  --teal: var(--palette-teal-on-light);
+  --violet: var(--palette-violet-on-light);
   --chart-1: #bd9fff;
   --chart-2: #9b7bff;
   --chart-3: #7c5cff;
   --chart-4: #5b3fd6;
   --chart-5: #3d2a99;
   --radius: 0.625rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #232425;
-  --sidebar-primary: #232425;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f1f2;
-  --sidebar-accent-foreground: #232425;
-  --sidebar-border: #ebebec;
-  --sidebar-ring: #bd9fff;
+  --sidebar: var(--palette-paper);
+  --sidebar-foreground: var(--palette-ink);
+  --sidebar-primary: var(--palette-ink);
+  --sidebar-primary-foreground: var(--palette-paper);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--palette-ink);
+  --sidebar-border: var(--palette-ink-line);
+  --sidebar-ring: var(--palette-violet-on-light);
   --prompt-shadow:
     0 5px 5px -2.5px rgb(0 0 0 / 0.03), 0 3px 3px -1.5px rgb(0 0 0 / 0.02),
     0 2px 2px -1px rgb(0 0 0 / 0.02), 0 1px 1px -0.5px rgb(0 0 0 / 0.03),
@@ -121,41 +179,48 @@
 }
 
 .dark {
-  --background: #121214;
-  --foreground: #ededee;
-  --card: #18181b;
-  --card-foreground: #ededee;
-  --popover: #18181b;
-  --popover-foreground: #ededee;
-  --primary: #ededee;
-  --primary-foreground: #18181b;
-  --secondary: #232326;
-  --secondary-foreground: #ededee;
-  --muted: #232326;
-  --muted-foreground: #a1a1a8;
-  --accent: #26262a;
-  --accent-foreground: #ededee;
-  --destructive: #f2555a;
-  --border: rgb(255 255 255 / 0.1);
-  --input: rgb(255 255 255 / 0.14);
-  --ring: #bd9fff;
-  --brand: #bd9fff;
-  --brand-foreground: #1b1528;
+  --background: var(--palette-night);
+  --foreground: var(--palette-snow);
+  --card: var(--palette-night-surface);
+  --card-foreground: var(--palette-snow);
+  --popover: var(--palette-night-surface);
+  --popover-foreground: var(--palette-snow);
+  --primary: var(--palette-snow);
+  --primary-foreground: var(--palette-night);
+  --secondary: var(--palette-night-raised);
+  --secondary-foreground: var(--palette-snow);
+  --muted: var(--palette-night-raised);
+  --muted-foreground: var(--palette-snow-muted);
+  --accent: color-mix(in srgb, var(--palette-snow) 8%, var(--palette-night-surface));
+  --accent-foreground: var(--palette-snow);
+  --destructive: var(--palette-red-on-dark);
+  --border: var(--palette-snow-line);
+  --input: var(--palette-snow-line-strong);
+  --ring: var(--palette-lavender);
+  --brand: var(--palette-lavender);
+  --brand-foreground: var(--palette-lavender-ink);
   --brand-soft: #2a2140;
-  --brand-strong: #cbb4ff;
+  --brand-strong: var(--palette-violet-on-dark);
+  --green: var(--palette-green-on-dark);
+  --amber: var(--palette-amber-on-dark);
+  --red: var(--palette-red-on-dark);
+  --blue: var(--palette-blue-on-dark);
+  --magenta: var(--palette-magenta-on-dark);
+  --teal: var(--palette-teal-on-dark);
+  --violet: var(--palette-violet-on-dark);
   --chart-1: #e2d6ff;
   --chart-2: #cbb4ff;
   --chart-3: #bd9fff;
   --chart-4: #9b7bff;
   --chart-5: #7c5cff;
-  --sidebar: #121214;
-  --sidebar-foreground: #ededee;
-  --sidebar-primary: #bd9fff;
-  --sidebar-primary-foreground: #1b1528;
-  --sidebar-accent: #232326;
-  --sidebar-accent-foreground: #ededee;
-  --sidebar-border: rgb(255 255 255 / 0.08);
-  --sidebar-ring: #bd9fff;
+  --sidebar: var(--palette-night);
+  --sidebar-foreground: var(--palette-snow);
+  --sidebar-primary: var(--palette-lavender);
+  --sidebar-primary-foreground: var(--palette-lavender-ink);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--palette-snow);
+  --sidebar-border: var(--palette-snow-line);
+  --sidebar-ring: var(--palette-lavender);
   --prompt-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px var(--border);
 }
 
@@ -181,6 +246,31 @@
   z-index: 1000 !important;
 }
 
+/* The side panel is frosted glass, so the map stays visible behind the chat and the other tabs.
+   Full-screen chat puts an opaque layer under it (kepler-panels.tsx), so that view stays solid.
+   kepler's own tab row would paint an opaque strip on top; clear it. */
+.side-panel--container .side-bar__inner {
+  background-color: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(8px) saturate(1.3);
+}
+
+.side-panel--container .side-side-panel__header__bottom {
+  background-color: transparent;
+}
+
+/* Let the chat run to the panel's bottom edge, so the fade under its composer meets the edge
+   instead of leaving a strip of kepler's padding below it. */
+.side-panel__content:has(.aui-thread-root) {
+  padding-bottom: 0;
+}
+
+/* kepler.gl hard-codes its panel titles at weight 400 with wide tracking; match the panel title
+   style in DESIGN.md. Two classes beat the single class styled-components generates. */
+.side-panel__content .panel-title {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
 /* kepler.gl's side panel forces `overflow-y: scroll`, reserving an empty scrollbar gutter even
    when nothing overflows; only show the scrollbar when the content actually scrolls. */
 .side-panel__content {
@@ -193,11 +283,11 @@
 /*
  * Marketing site (src/app/(marketing)): Ideogram-style art direction. Light editorial body,
  * cinematic dark bands (`.mk-dark`), serif display type, lavender pill CTAs.
- * Scoped to `.marketing` so the workspace theme is untouched. Components only use `mk-*`
- * tokens, so wrapping any block in `.mk-dark` flips it to the dark palette.
+ * Scoped to `.marketing` so it stays light whatever the workspace theme is. Components only use
+ * `mk-*` tokens, so wrapping any block in `.mk-dark` flips it to the dark palette. Values come
+ * from the shared palette at the top of this file.
  */
 @theme inline {
-  --font-display: var(--font-mk-display);
   --color-mk-bg: var(--mk-bg);
   --color-mk-surface: var(--mk-surface);
   --color-mk-raised: var(--mk-raised);
@@ -220,26 +310,26 @@
 
 /* Light (default). Accents are the darker, text-safe shades: all ≥ 4.5:1 on white. */
 .marketing {
-  --mk-bg: #ffffff;
-  --mk-surface: #f6f5f8;
-  --mk-raised: #ffffff;
-  --mk-fg: #1f1b2d;
-  --mk-muted: #59566a;
-  --mk-faint: #6b6879;
-  --mk-line: rgb(0 0 0 / 0.08);
-  --mk-line-strong: rgb(0 0 0 / 0.15);
-  --mk-brand: #bd9fff;
-  --mk-brand-fg: #1b1528;
-  --mk-magenta: #be185d;
-  --mk-blue: #2563eb;
-  --mk-amber: #b45309;
-  --mk-teal: #0f766e;
-  --mk-green: #15803d;
-  --mk-red: #c81e1e;
-  --mk-violet: #6d4aff;
+  --mk-bg: var(--palette-paper);
+  --mk-surface: var(--palette-mist);
+  --mk-raised: var(--palette-paper);
+  --mk-fg: var(--palette-ink);
+  --mk-muted: var(--palette-ink-muted);
+  --mk-faint: var(--palette-ink-faint);
+  --mk-line: var(--palette-ink-line);
+  --mk-line-strong: var(--palette-ink-line-strong);
+  --mk-brand: var(--palette-lavender);
+  --mk-brand-fg: var(--palette-lavender-ink);
+  --mk-magenta: var(--palette-magenta-on-light);
+  --mk-blue: var(--palette-blue-on-light);
+  --mk-amber: var(--palette-amber-on-light);
+  --mk-teal: var(--palette-teal-on-light);
+  --mk-green: var(--palette-green-on-light);
+  --mk-red: var(--palette-red-on-light);
+  --mk-violet: var(--palette-violet-on-light);
   /* Text on an ink (`bg-mk-fg`) pill. */
-  --mk-on-fg: #ffffff;
-  --ring: #6d4aff;
+  --mk-on-fg: var(--palette-paper);
+  --ring: var(--palette-violet-on-light);
   color-scheme: light;
   background: var(--mk-bg);
   color: var(--mk-fg);
@@ -248,23 +338,23 @@
 /* Dark bands: hero, Self-heal, CTA, and the "screens" inside mock cards. */
 .marketing .mk-dark,
 .marketing.mk-dark {
-  --mk-bg: #14111d;
-  --mk-surface: #1c1927;
-  --mk-raised: #25212f;
-  --mk-fg: #fafafa;
-  --mk-muted: #b3b0bf;
-  --mk-faint: #8f8c9c;
-  --mk-line: rgb(255 255 255 / 0.1);
-  --mk-line-strong: rgb(255 255 255 / 0.2);
-  --mk-magenta: #ff5cb3;
-  --mk-blue: #6aa6ff;
-  --mk-amber: #ffb224;
-  --mk-teal: #19e6c1;
-  --mk-green: #3ddc84;
-  --mk-red: #ff6b78;
-  --mk-violet: #b79bff;
-  --mk-on-fg: #14111d;
-  --ring: #bd9fff;
+  --mk-bg: var(--palette-night);
+  --mk-surface: var(--palette-night-surface);
+  --mk-raised: var(--palette-night-raised);
+  --mk-fg: var(--palette-snow);
+  --mk-muted: var(--palette-snow-muted);
+  --mk-faint: var(--palette-snow-faint);
+  --mk-line: var(--palette-snow-line);
+  --mk-line-strong: var(--palette-snow-line-strong);
+  --mk-magenta: var(--palette-magenta-on-dark);
+  --mk-blue: var(--palette-blue-on-dark);
+  --mk-amber: var(--palette-amber-on-dark);
+  --mk-teal: var(--palette-teal-on-dark);
+  --mk-green: var(--palette-green-on-dark);
+  --mk-red: var(--palette-red-on-dark);
+  --mk-violet: var(--palette-violet-on-dark);
+  --mk-on-fg: var(--palette-night);
+  --ring: var(--palette-lavender);
   color-scheme: dark;
   color: var(--mk-fg);
 }
@@ -274,18 +364,18 @@
   --mk-bg: #b7a1f7;
   --mk-surface: rgb(255 255 255 / 0.22);
   --mk-raised: rgb(255 255 255 / 0.35);
-  --mk-fg: #1f1b2d;
+  --mk-fg: var(--palette-ink);
   --mk-muted: #2f2942;
   --mk-faint: #3d3654;
   --mk-line: rgb(31 27 45 / 0.14);
   --mk-line-strong: rgb(31 27 45 / 0.28);
-  --ring: #1f1b2d;
+  --ring: var(--palette-ink);
   color: var(--mk-fg);
 }
 
 /* In-page links glide to their section; scroll-padding keeps section tops clear of the fixed 72px nav. */
 html:has(.marketing) {
-  background: #ffffff;
+  background: var(--palette-paper);
   scroll-padding-top: 72px;
 }
 

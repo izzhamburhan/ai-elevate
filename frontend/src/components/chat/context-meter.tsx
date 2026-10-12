@@ -74,7 +74,7 @@ function level(ratio: number) {
 
 const levelColor = {
   ok: "text-chart-3",
-  warn: "text-amber-500",
+  warn: "text-amber",
   critical: "text-destructive",
 } as const;
 
@@ -165,7 +165,7 @@ export function ContextMeter({ modelId }: { modelId: string }) {
               "flex gap-2 rounded-md border px-2 py-1.5 text-[12px] leading-4",
               state === "critical"
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                : "border-amber/30 bg-amber/10 text-amber",
             )}
           >
             <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />

@@ -4,12 +4,13 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
-import { Loader2, MessageSquareText, Route, X } from "lucide-react";
+import { Loader2, MapPin, MessageSquareText, Route, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { pointInRing } from "@/lib/menara/geometry";
 import { viewFor } from "@/lib/menara/map-draw";
+import { TOWER_STATUS_COLOR } from "@/lib/map-colors";
 import { cn } from "@/lib/utils";
 
 import { MAP_ID, type makeKeplerStore } from "../kepler-store";
@@ -50,17 +51,17 @@ const TRAIL_EVENT = "menara:trail-open";
 
 export type Section = "towers" | "subscribers" | "usage";
 
-const STATUS_COLOR: Record<string, string> = { UP: "#22c55e", DEGRADED: "#f59e0b", DOWN: "#ef4444" };
+const STATUS_COLOR: Record<string, string> = TOWER_STATUS_COLOR;
 const LABEL_STYLE: Record<string, string> = {
-  GOOD: "bg-emerald-500/15 text-emerald-500",
-  FAIR: "bg-amber-500/15 text-amber-500",
+  GOOD: "bg-green/15 text-green",
+  FAIR: "bg-amber/15 text-amber",
   POOR: "bg-orange-500/15 text-orange-500",
-  NO_SERVICE: "bg-red-500/15 text-red-500",
+  NO_SERVICE: "bg-red/15 text-red",
 };
 const ROUTINE_STYLE: Record<Routine["kind"], { chip: string; color: string }> = {
-  home: { chip: "bg-sky-500/15 text-sky-400", color: "#38bdf8" },
-  weekday: { chip: "bg-yellow-500/15 text-yellow-400", color: "#facc15" },
-  weekend: { chip: "bg-teal-500/15 text-teal-400", color: "#2dd4bf" },
+  home: { chip: "bg-blue/15 text-blue", color: "#38bdf8" },
+  weekday: { chip: "bg-amber/15 text-amber", color: "#facc15" },
+  weekend: { chip: "bg-teal/15 text-teal", color: "#2dd4bf" },
 };
 
 async function menara<T>(tool: string, args: Record<string, unknown>): Promise<T> {
@@ -92,7 +93,7 @@ function segmentsOf(rings: number[][][]) {
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
-    <div className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+    <div className="min-w-0 rounded-xl border bg-foreground/[0.02] px-2 py-1.5">
       <div className={cn("whitespace-nowrap text-[13px] font-semibold tabular-nums", tone)}>{value}</div>
       <div className="truncate text-[10.5px] text-muted-foreground">{label}</div>
     </div>
@@ -299,12 +300,17 @@ export function AreaCard({
   const p = area.place;
   return (
     <div className="flex max-h-[34rem] flex-col gap-3 overflow-y-auto rounded-xl border bg-card/40 p-3 font-sans text-foreground">
-      <div>
-        <h2 className="truncate text-sm font-bold tracking-tight">{p.name}</h2>
-        <p className="text-[11px] text-muted-foreground">
-          {p.level === "point" ? `Circle of ${p.radius_km} km` : `${levelWord(p)}${p.district && p.level === "mukim" ? `, ${p.district}` : ""}${p.state ? `, ${p.state}` : ""}`}
-          {p.rings.length ? " · outline from NetOps boundaries" : ""}
-        </p>
+      <div className="flex items-center gap-2">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-blue/15 text-blue">
+          <MapPin className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-medium">{p.name}</h2>
+          <p className="text-[11px] text-muted-foreground">
+            {p.level === "point" ? `Circle of ${p.radius_km} km` : `${levelWord(p)}${p.district && p.level === "mukim" ? `, ${p.district}` : ""}${p.state ? `, ${p.state}` : ""}`}
+            {p.rings.length ? " · outline from NetOps boundaries" : ""}
+          </p>
+        </div>
       </div>
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
@@ -313,8 +319,8 @@ export function AreaCard({
         {want.has("towers") ? (
           <>
             <Stat label="Towers" value={area.inside} />
-            <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber-500" : undefined} />
-            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red-500" : undefined} />
+            <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber" : undefined} />
+            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red" : undefined} />
           </>
         ) : null}
         {want.has("subscribers") ? <Stat label="People (est.)" value={area.peopleEst.toLocaleString()} /> : null}
@@ -322,11 +328,11 @@ export function AreaCard({
 
       {want.has("towers") ? (
       <section>
-        <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Towers {p.rings.length ? `inside ${p.name}` : "in the circle"}</h3>
+        <h3 className="mb-1 text-[12px] font-medium text-muted-foreground">Towers {p.rings.length ? `inside ${p.name}` : "in the circle"}</h3>
         <ul className="flex max-h-40 flex-col gap-0.5 overflow-y-auto text-[12px]">
           {area.towers.map((t) => (
             <li key={t.enodeb_name} className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent">
-              <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[t.status] ?? "#888" }} />
+              <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[t.status] ?? TOWER_STATUS_COLOR.UNKNOWN }} />
               <span className="font-medium">{t.enodeb_name}</span>
               <span className="truncate text-muted-foreground">{t.town}</span>
               <span className="ml-auto tabular-nums text-muted-foreground">{t.status}</span>
@@ -339,7 +345,7 @@ export function AreaCard({
 
       {want.has("subscribers") ? (
       <section>
-        <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
+        <h3 className="mb-1 text-[12px] font-medium text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
         <ul className="flex max-h-44 flex-col gap-0.5 overflow-y-auto text-[12px]">
           {area.subscribers.map((s) => (
             <li key={s.msisdn_hash}>
@@ -349,7 +355,7 @@ export function AreaCard({
                 className={cn("flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-accent", trail?.hash === s.msisdn_hash && "bg-accent")}
               >
                 <span className="font-mono">{s.msisdn_hash.slice(0, 8)}</span>
-                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", LABEL_STYLE[s.latest_label] ?? "bg-muted")}>{s.latest_label}</span>
+                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", LABEL_STYLE[s.latest_label] ?? "bg-muted")}>{s.latest_label}</span>
                 <span className="truncate text-muted-foreground">{s.enodeb_name}</span>
                 <span className="ml-auto text-muted-foreground">{s.cell_changes_24h} moves</span>
               </button>
@@ -369,10 +375,10 @@ export function AreaCard({
       {want.has("usage") && apps?.apps.length ? (
         <section>
           <div className="mb-1 flex items-center justify-between">
-            <h3 className="text-[12px] font-semibold text-muted-foreground">
+            <h3 className="text-[12px] font-medium text-muted-foreground">
               What people use here{apps.busiest_hour != null ? ` — busiest at ${String(apps.busiest_hour).padStart(2, "0")}:00` : ""}
             </h3>
-            <div className="flex rounded-md border text-[11px]">
+            <div className="flex overflow-hidden rounded-full border text-[11px]">
               {(["users", "data"] as const).map((by) => (
                 <button
                   key={by}
@@ -381,7 +387,7 @@ export function AreaCard({
                     setRank(by);
                     void loadApps(p, by);
                   }}
-                  className={cn("px-2 py-0.5 capitalize", rank === by ? "bg-accent font-semibold" : "text-muted-foreground")}
+                  className={cn("px-2.5 py-0.5 capitalize", rank === by ? "bg-accent font-medium" : "text-muted-foreground")}
                 >
                   {by}
                 </button>
@@ -414,13 +420,13 @@ export function AreaCard({
             <div
               role="dialog"
               aria-label={`Trail of subscriber ${trail.hash.slice(0, 8)}`}
-              className="fixed right-4 bottom-10 z-[60] flex max-h-[60vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-xl border bg-background/95 p-3 font-sans text-foreground shadow-xl backdrop-blur"
+              className="fixed right-4 bottom-10 z-[60] flex max-h-[60vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
             >
               <div className="flex items-center gap-1.5">
                 <Route className="size-3.5 text-muted-foreground" />
-                <h3 className="text-[13px] font-semibold">Trail of {trail.hash.slice(0, 8)}</h3>
+                <h3 className="text-[13px] font-medium">Trail of {trail.hash.slice(0, 8)}</h3>
                 <span className="text-[11px] text-muted-foreground">cells only, 24 h</span>
-                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="ml-auto rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                   <X className="size-3.5" />
                 </button>
               </div>
@@ -435,11 +441,11 @@ export function AreaCard({
               </ol>
               {routines ? (
                 <div>
-                  <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">Routine (last 4 weeks)</h4>
+                  <h4 className="mb-1 text-[12px] font-medium text-muted-foreground">Routine (last 4 weeks)</h4>
                   <ul className="flex flex-col gap-1.5 text-[12px] leading-5">
                     {routines.map((r) => (
                       <li key={`${r.kind}-${r.tower}`} className="flex gap-2">
-                        <span className={cn("h-5 shrink-0 rounded px-1.5 text-[10px] font-semibold leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
+                        <span className={cn("h-5 shrink-0 rounded-full px-2 text-[10px] font-medium leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
                         <span>{r.sentence}</span>
                       </li>
                     ))}

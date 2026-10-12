@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 
+import { Wordmark as SharedWordmark } from "@/components/wordmark";
 import { cn } from "@/lib/utils";
 
 /** Section links shared by the top nav and the footer. */
@@ -11,21 +12,9 @@ export const NAV_LINKS = [
   { href: "#faq", label: "FAQ" },
 ];
 
-/** Logo glyph + serif name. */
+/** Logo glyph + serif name in the site's ink. The workspace top bar uses the same mark. */
 export function Wordmark({ className }: { className?: string }) {
-  return (
-    <span className={cn("flex items-center gap-2", className)}>
-      <span
-        aria-hidden="true"
-        className="grid size-6 place-items-center bg-mk-fg [clip-path:polygon(50%_0,93%_25%,93%_75%,50%_100%,7%_75%,7%_25%)]"
-      >
-        <svg viewBox="0 0 24 24" className="size-4">
-          <path d="M6.5 16 12 7.5l5.5 8.5" fill="none" stroke="var(--mk-bg)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <span className="font-display text-[26px] leading-none font-medium tracking-[-0.03em] text-mk-fg">Elevate</span>
-    </span>
-  );
+  return <SharedWordmark className={cn("text-mk-fg", className)} />;
 }
 
 /** Small rounded pill for metadata (layer type, source MCP, status). */

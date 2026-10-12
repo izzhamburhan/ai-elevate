@@ -1,3 +1,5 @@
+import { EXAMPLE_PROMPTS } from "@/lib/example-prompts";
+
 import { MapArt, type MapLayer, type RampName } from "./map-art";
 import { SectionHeading } from "./primitives";
 import { PromptBar } from "./prompt-bar";
@@ -18,10 +20,10 @@ type Step = {
 
 /** One incident, four questions, in the order an operator would ask them. */
 const STORY: Step[] = [
-  { id: "s1", prompt: "Where did the river overflow near Kota Bharu this morning?", layer: "flood", layerLabel: "Flood extent", mcp: "flood-mcp", seed: 61, coast: true },
-  { id: "s2", prompt: "Who and what is in the blast radius of TWR-KB-031?", layer: "graph", layerLabel: "Graph", mcp: "ontology-mcp", seed: 83 },
-  { id: "s3", prompt: "Show 4G load on the neighbour cells right now", layer: "hexbin", layerLabel: "Hexbin", mcp: "tower-mcp", seed: 11, pitch: true },
-  { id: "s4", prompt: "Send the nearest boat crew to the three flooded sites", layer: "route", layerLabel: "Route", mcp: "field-mcp", seed: 41 },
+  { id: "s1", prompt: EXAMPLE_PROMPTS[0], layer: "flood", layerLabel: "Flood extent", mcp: "flood-mcp", seed: 61, coast: true },
+  { id: "s2", prompt: EXAMPLE_PROMPTS[1], layer: "graph", layerLabel: "Graph", mcp: "ontology-mcp", seed: 83 },
+  { id: "s3", prompt: EXAMPLE_PROMPTS[2], layer: "hexbin", layerLabel: "Hexbin", mcp: "tower-mcp", seed: 11, pitch: true },
+  { id: "s4", prompt: EXAMPLE_PROMPTS[3], layer: "route", layerLabel: "Route", mcp: "field-mcp", seed: 41 },
 ];
 
 const H = 500;
