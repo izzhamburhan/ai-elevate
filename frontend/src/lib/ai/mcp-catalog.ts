@@ -1,3 +1,5 @@
+import { MENARA_HOST, MENARA_SERVERS } from "@/lib/menara/servers";
+
 import type { McpServerRequest } from "./mcp-config";
 
 /**
@@ -18,6 +20,16 @@ export type BuiltinConnector = {
   mapSession?: boolean;
 };
 
+/** Menara synthetic-data MCPs (backend/*-mcp), started together by `python backend/run_all.py`. */
+const MENARA_CONNECTORS: readonly BuiltinConnector[] = MENARA_SERVERS.map((s) => ({
+  id: `builtin:menara-${s.key}`,
+  name: s.name,
+  description: `${s.description} (synthetic data)`,
+  url: `${MENARA_HOST}:${s.port}/mcp`,
+  transport: "http",
+  setupHint: "cd backend && python run_all.py",
+}));
+
 export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
   {
     id: "builtin:netops",
@@ -26,7 +38,7 @@ export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
       "Network operations: coverage, sites, tickets, BIN and subscriber analytics, next-best-action, RAN KPIs, Malaysian place search and state/district/mukim boundaries.",
     url: process.env.NEXT_PUBLIC_NETOPS_MCP_URL ?? "http://127.0.0.1:8000/mcp",
     transport: "http",
-    setupHint: "cd netops-mcp && uv run python -m netops_mcp.server --http",
+    setupHint: "cd backend/netops-mcp && uv run python -m netops_mcp.server --http",
   },
   {
     id: "builtin:weather-ml",
@@ -48,6 +60,7 @@ export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
     setupHint: "Served by this app. Keep the map open in this tab; tool calls run on it.",
     mapSession: true,
   },
+  ...MENARA_CONNECTORS,
 ];
 
 export function findBuiltinConnector(id: string): BuiltinConnector | undefined {

@@ -1,6 +1,8 @@
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import type { ToolSet } from "ai";
 
+import { AGENT_HIDDEN_TOOLS } from "@/lib/menara/servers";
+
 import type { McpServerInspection, McpServerRequest } from "./mcp-config";
 
 /**
@@ -43,7 +45,7 @@ export async function connectMcpTools(userServers: McpServerRequest[] = []): Pro
       try {
         const definitions = await client.listTools();
         const disabled = new Set(server.disabledTools ?? []);
-        const enabled = definitions.tools.filter((tool) => !disabled.has(tool.name));
+        const enabled = definitions.tools.filter((tool) => !disabled.has(tool.name) && !AGENT_HIDDEN_TOOLS.has(tool.name));
         return { client, tools: client.toolsFromDefinitions({ ...definitions, tools: enabled }) };
       } catch (error) {
         await client.close().catch(() => {});

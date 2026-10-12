@@ -42,6 +42,7 @@ src/app/api/chat/route.ts
 The sliders button in the chat composer opens the **Connectors** dialog:
 
 - **Built-in** connectors come from `src/lib/ai/mcp-catalog.ts`. NetOps (`../netops-mcp`) is listed
+- **Built-in** connectors come from `src/lib/ai/mcp-catalog.ts`. NetOps (`../backend/netops-mcp`) is listed
   by default at `NEXT_PUBLIC_NETOPS_MCP_URL` (default `http://127.0.0.1:8000/mcp`). Add an entry
   there to ship another server to every user.
 - **Custom** connectors are any MCP server URL the user adds (optional bearer token).
