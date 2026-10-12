@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
-import { Loader2, MessageSquareText, Route } from "lucide-react";
+import { Loader2, MessageSquareText, Route, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
@@ -43,6 +44,8 @@ const STOP_RADIUS = 35;
 const ROUTINE_RADIUS = 55;
 const PER_TOWER_SAMPLE = 6;
 const MAX_TOWERS_SAMPLED = 25;
+
+const TRAIL_EVENT = "menara:trail-open";
 
 export type Section = "towers" | "subscribers" | "usage";
 
@@ -136,6 +139,19 @@ export function AreaCard({
   const [error, setError] = useState<string | null>(null);
   const [trail, setTrail] = useState<{ hash: string; segments: Segment[] } | null>(null);
   const [routines, setRoutines] = useState<Routine[] | null>(null);
+  const [trailBusy, setTrailBusy] = useState<string | null>(null);
+  const cardId = useId();
+
+  // one trail card on the page: when another chat card opens a trail, this one closes its own
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === cardId) return;
+      setTrail(null);
+      setRoutines(null);
+    };
+    window.addEventListener(TRAIL_EVENT, onOpen);
+    return () => window.removeEventListener(TRAIL_EVENT, onOpen);
+  }, [cardId]);
 
   type MapState = { layers: { id: string; dataId: string }[]; datasets: { id: string }[] };
   /** Removes our layers and datasets by id prefix; kepler logs an error for ids that are not loaded, so only existing ones are touched. */
@@ -228,9 +244,17 @@ export function AreaCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const closeTrail = () => {
+    setTrail(null);
+    setRoutines(null);
+    removeOurs(["trail_"]);
+  };
+
   const showTrail = async (hash: string) => {
     setError(null);
     setRoutines(null);
+    setTrailBusy(hash);
+    window.dispatchEvent(new CustomEvent(TRAIL_EVENT, { detail: cardId }));
     try {
       const [data, routineReply] = await Promise.all([
         menara<{ segments: Segment[] }>("user_get_trail", { msisdn_hash: hash, window_min: 1440 }),
@@ -243,6 +267,7 @@ export function AreaCard({
       const segments = data.segments ?? [];
       setTrail({ hash, segments });
       setRoutines(routineReply.routines ?? []);
+      setTrailBusy(null);
       removeOurs(["trail_"]);
       await addPoints("trail_stops", "Trail stops", segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })), TRAIL_COLOR, STOP_RADIUS);
       await addLines(
@@ -256,7 +281,15 @@ export function AreaCard({
         const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
         await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, ROUTINE_RADIUS);
       }
+      // fit the map to the area and the whole trail, which can leave the area
+      if (segments.length && area) {
+        const [west, south, east, north] = area.place.bbox;
+        const lngs = [west, east, ...segments.map((s) => s.cell_lng)];
+        const lats = [south, north, ...segments.map((s) => s.cell_lat)];
+        runKeplerCommand(store, MAP_ID, "set_view", viewFor([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]));
+      }
     } catch (e) {
+      setTrailBusy(null);
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -338,44 +371,10 @@ export function AreaCard({
       </section>
       ) : null}
 
-      {want.has("subscribers") && trail ? (
-        <section>
-          <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
-            <Route className="size-3.5" /> Trail of {trail.hash.slice(0, 8)} (cells only, 24 h)
-          </h3>
-          <ol className="flex flex-col gap-0.5 text-[12px]">
-            {trail.segments.map((s, i) => (
-              <li key={`${s.arrived_at}-${i}`} className="flex gap-2 rounded px-1.5 py-0.5">
-                <span className="w-9 tabular-nums text-muted-foreground">{hhmm(s.arrived_at)}</span>
-                <span className="font-medium">{s.serving_cell}</span>
-                <span className="ml-auto text-muted-foreground">{s.left_at ? `${Math.round(s.duration_min)} min` : "now"}</span>
-              </li>
-            ))}
-          </ol>
-          {routines ? (
-            <div className="mt-2">
-              <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">Routine (last 4 weeks)</h4>
-              <ul className="flex flex-col gap-1.5 text-[12px] leading-5">
-                {routines.map((r) => (
-                  <li key={`${r.kind}-${r.tower}`} className="flex gap-2">
-                    <span className={cn("h-5 shrink-0 rounded px-1.5 text-[10px] font-semibold leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
-                    <span>{r.sentence}</span>
-                  </li>
-                ))}
-                {routines.length === 0 ? <li className="text-muted-foreground">No regular routine found in the last 4 weeks.</li> : null}
-              </ul>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">Synthetic subscriber. Cell level (about a kilometre), so places are &lsquo;near&rsquo;, never &lsquo;at&rsquo;.</p>
-            </div>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-2"
-            onClick={() => aui.thread().append(`Explain the movements of subscriber ${trail.hash} in plain language (use the describe_trail tool).`)}
-          >
-            <MessageSquareText /> Explain this trail
-          </Button>
-        </section>
+      {want.has("subscribers") && (trail || trailBusy) ? (
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Route className="size-3.5" /> {trailBusy ? "Loading the trail…" : `Trail of ${trail?.hash.slice(0, 8)} is shown at the bottom right of the map.`}
+        </p>
       ) : null}
 
       {want.has("usage") && apps?.apps.length ? (
@@ -421,6 +420,57 @@ export function AreaCard({
         </section>
       ) : null}
       <p className="text-[11px] text-muted-foreground">Synthetic data. Cell level only; groups of 1–4 people are withheld.</p>
+      {trail && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-label={`Trail of subscriber ${trail.hash.slice(0, 8)}`}
+              className="fixed right-4 bottom-10 z-[60] flex max-h-[60vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-xl border bg-background/95 p-3 font-sans text-foreground shadow-xl backdrop-blur"
+            >
+              <div className="flex items-center gap-1.5">
+                <Route className="size-3.5 text-muted-foreground" />
+                <h3 className="text-[13px] font-semibold">Trail of {trail.hash.slice(0, 8)}</h3>
+                <span className="text-[11px] text-muted-foreground">cells only, 24 h</span>
+                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+              <ol className="flex flex-col gap-0.5 text-[12px]">
+                {trail.segments.map((s, i) => (
+                  <li key={`${s.arrived_at}-${i}`} className="flex gap-2 rounded px-1.5 py-0.5">
+                    <span className="w-9 tabular-nums text-muted-foreground">{hhmm(s.arrived_at)}</span>
+                    <span className="font-medium">{s.serving_cell}</span>
+                    <span className="ml-auto text-muted-foreground">{s.left_at ? `${Math.round(s.duration_min)} min` : "now"}</span>
+                  </li>
+                ))}
+              </ol>
+              {routines ? (
+                <div>
+                  <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">Routine (last 4 weeks)</h4>
+                  <ul className="flex flex-col gap-1.5 text-[12px] leading-5">
+                    {routines.map((r) => (
+                      <li key={`${r.kind}-${r.tower}`} className="flex gap-2">
+                        <span className={cn("h-5 shrink-0 rounded px-1.5 text-[10px] font-semibold leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
+                        <span>{r.sentence}</span>
+                      </li>
+                    ))}
+                    {routines.length === 0 ? <li className="text-muted-foreground">No regular routine found in the last 4 weeks.</li> : null}
+                  </ul>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">Synthetic subscriber. Cell level (about a kilometre), so places are &lsquo;near&rsquo;, never &lsquo;at&rsquo;.</p>
+                </div>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => aui.thread().append(`Explain the movements of subscriber ${trail.hash} in plain language (use the describe_trail tool).`)}
+              >
+                <MessageSquareText /> Explain this trail
+              </Button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
