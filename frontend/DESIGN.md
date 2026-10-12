@@ -214,7 +214,7 @@ Rules:
 | --- | --- | --- |
 | Hero display | `font-display font-normal leading-[1] tracking-[-0.035em] text-[2.9rem] sm:text-6xl lg:text-[5rem]` | Site hero, auth art panel |
 | Section heading | `text-[2rem] sm:text-[2.6rem] font-medium leading-[1.1] tracking-[-0.025em]` | Site sections, auth title |
-| Empty-state headline | `text-2xl font-medium tracking-[-0.025em]` | Empty chat ("What will you map?") |
+| Empty-state headline | `text-2xl font-medium tracking-[-0.025em]` | Empty chat ("Where would you like to investigate?") |
 | Panel title | `text-lg font-medium tracking-[-0.025em]` (kepler's titles: 18px, same weight and tracking) | Workspace panel tabs ("Weather intelligence", "Layers") |
 | Card title | `text-sm font-medium` (13px in floating cards) | Chat cards |
 | Card section label | `text-[12px] font-medium text-muted-foreground` | "Towers inside …" |

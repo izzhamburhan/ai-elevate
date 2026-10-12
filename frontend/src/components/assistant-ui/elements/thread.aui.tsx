@@ -486,16 +486,16 @@ const ThreadSuggestionItem: FC = () => {
       <SuggestionPrimitive.Trigger send asChild>
         <button
           type="button"
-          className="aui-thread-welcome-suggestion group hover:bg-accent focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-lg px-2 py-2 text-start text-[13px] leading-snug transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none"
+          className="aui-thread-welcome-suggestion group hover:bg-foreground/[0.04] focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-lg px-2 py-1.5 text-start text-[13px] leading-snug transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none"
         >
           <span
             aria-hidden
-            className="text-muted-foreground/60 group-hover:text-foreground font-mono text-xs transition-colors motion-reduce:transition-none"
+            className="text-muted-foreground/40 group-hover:text-foreground font-mono text-xs transition-colors motion-reduce:transition-none"
           >
             {">"}
           </span>
           <span className="min-w-0 flex-1">
-            <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground" />{" "}
+            <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground/90 group-hover:text-foreground transition-colors" />{" "}
             <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
           </span>
         </button>

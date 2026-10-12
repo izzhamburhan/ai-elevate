@@ -52,6 +52,8 @@ function guardSearchCalls(tools: ToolSet): ToolSet {
 
 export type McpToolbox = {
   tools: ToolSet;
+  /** URLs of the servers that couldn't be reached; the chat goes on without their tools. */
+  offline: string[];
   /** Idempotent; call when the response stream ends or the request is aborted. */
   close: () => Promise<void>;
 };
@@ -80,12 +82,14 @@ export async function connectMcpTools(userServers: McpServerRequest[] = []): Pro
   );
 
   const clients: MCPClient[] = [];
+  const offline: string[] = [];
   let tools: ToolSet = {};
   results.forEach((result, i) => {
     if (result.status === "fulfilled") {
       clients.push(result.value.client);
       tools = { ...tools, ...result.value.tools };
     } else {
+      offline.push(servers[i].url);
       console.warn(`[mcp] skipping ${servers[i].url}:`, result.reason);
     }
   });
@@ -93,6 +97,7 @@ export async function connectMcpTools(userServers: McpServerRequest[] = []): Pro
   let closed = false;
   return {
     tools,
+    offline,
     close: async () => {
       if (closed) return;
       closed = true;

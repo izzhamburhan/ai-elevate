@@ -12,6 +12,7 @@ import { ContextMeter } from "@/components/chat/context-meter";
 import { menaraToolkit } from "@/components/chat/menara-toolkit";
 import { ConnectorsMenu } from "@/components/connectors/connectors-menu";
 import { enabledConnectorRequests } from "@/components/connectors/connectors-store";
+import { followUpSuggestionAdapter } from "@/lib/ai/follow-up-suggestions";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
 import { EXAMPLE_PROMPTS } from "@/lib/example-prompts";
 import { weatherDemoChatModel } from "@/lib/weather/demo";
@@ -48,8 +49,13 @@ function useChatThreadRuntime() {
         body: () => ({ mcpServers: enabledConnectorRequests() }),
       }),
   );
-  // resume the answer once a chat tool that runs in the browser (the Map & area and Self-heal cards) has returned
-  return useChatRuntime({ transport, sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls });
+  // resume the answer once a chat tool that runs in the browser (the Map & area and Self-heal cards) has returned;
+  // once the answer is done, offer follow-up prompts above the composer
+  return useChatRuntime({
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    adapters: { suggestion: followUpSuggestionAdapter },
+  });
 }
 
 /**
@@ -116,10 +122,10 @@ function ChatModelPicker() {
 function AssistantWelcome() {
   return (
     <div className="mb-4 flex flex-col gap-1.5 px-2">
-      <h2 className="text-2xl font-medium tracking-[-0.025em]">What will you map?</h2>
+      <h2 className="text-2xl font-medium tracking-[-0.025em]">Where would you like to investigate?</h2>
       <p className="text-[13px] leading-5 text-muted-foreground">
-        Ask in plain words about a place, a tower or an incident. The answer comes back as a live
-        map.
+        Ask in plain language about a tower, an outage, or weather impact. Live telemetry,
+        insights, and field data appear on the map.
       </p>
     </div>
   );
