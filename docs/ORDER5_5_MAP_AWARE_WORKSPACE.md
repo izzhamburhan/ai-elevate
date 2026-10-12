@@ -51,17 +51,20 @@ Scope rule: query only these Site_IDs (site_id) or radius queries centred inside
 ```
 
 **The UI never claims that an agent analysed the area just because the area was sent.** After the run, `areaAdherence` checks the arguments of every successful tool call recorded in the ledger:
-- **In the area:** the call named only the area's Site_IDs (`site_id`, `site`, `site_ids`), or it used a centre inside the area with a radius no larger than the area's radius plus 1 km.
-- **Outside:** the call named a site outside the area, or searched a wider circle.
+- **Strictly inside:** the call named only the area's Site_IDs (`site_id`, `site`, `site_ids`), or it made a radius search whose whole circle lies inside the area:
+  - for a circle or tower: centre distance plus search radius is no more than the area radius;
+  - for a rectangle or polygon: 24 points on the search circle's edge all fall inside the shape.
+- **Reaches beyond:** the radius search is centred inside the area, but its circle extends past the area. A reopened polygon (known only by its bounding box) is also counted here, because it cannot prove containment.
+- **Outside:** the call named a site outside the area, or its centre lies outside.
 - **Unscoped:** the call used no location at all, for example a region or national query.
 
 The verdicts are:
 
 | Verdict | Meaning |
 |---|---|
-| `respected` | Every call stayed in the area. |
-| `partly respected` | Some calls stayed in the area; the banner says the findings are not limited to it. |
-| `not area-scoped` | No call stayed in the area; the banner says not to read the findings as an analysis of it. |
+| `respected` | Every call was strictly inside the area. |
+| `partly respected` | Some calls were strictly inside. The banner counts the calls that reached beyond, went outside or were unscoped, and says the findings are not strictly limited to the area. |
+| `not area-scoped` | No call was strictly inside; the banner says not to read the findings as an analysis of the area. |
 | `no tool calls` | Nothing was recorded, so nothing was analysed. |
 
 ## Map ↔ pane
@@ -117,15 +120,18 @@ The frontend reaches the existing services:
 | `npm run test:hermes` (9 new workspace tests; Order 4, 6 and 7 tests included) | PASS: 25 |
 | `npm run test:weather`; `boundary-context.test.mjs` | PASS: 8; PASS: 2 |
 | `npm run lint`, `npx tsc --noEmit`, `npm run build` | PASS (0 lint problems, 0 type errors) |
-| Real Hermes run with an area attached: Engineer, `c462515a826b451dbd95e9b68a5db2e9`, drawn rectangle over Shah Alam (12 NetOps sites) | **completed**. 2 successful MCP calls: `get_ran_kpi` on exactly the 12 Site_IDs, and `get_ntt_tickets` within 3 km of a point inside the area. Area scope: **respected**. |
+| Real Hermes run with an area attached: Engineer, `c462515a826b451dbd95e9b68a5db2e9`, drawn rectangle over Shah Alam (12 NetOps sites, about 2 km from its centre to the corners) | **completed**. 2 successful MCP calls:<br>- `get_ran_kpi` on exactly the 12 Site_IDs: strictly inside.<br>- `get_ntt_tickets` with a 3 km radius centred inside the area: its circle reaches beyond the rectangle.<br>Area scope: **partly respected** (1 strictly inside, 1 reaching beyond). An earlier version of the check called this run "respected"; this PR corrects it. |
 | Risk check on that run | medium: 1 of 36 KPI values breaches a NetOps threshold (CK9926 availability 99.41% < 99.5%, which the agent's prose called "a rounding artifact") |
 | Earlier runs, recorded honestly in the UI | `b9a21672…` failed (`gemma4` did not call tools); `a50969a1…` failed (NetOps in `--search` mode exposed no tools to Hermes; the UI said "no tool calls, nothing analysed"); `14dcf23f…` failed (task timeout after 2 area-scoped calls; the UI showed the 13 recorded rows and "did not complete") |
 | Opportunity Graph | graph-ranked cards in 0.8 s; Hypothesis validation `bd214774…` **completed** with Hermes-computed verdicts (screenshot 08) |
 | Browser: draw a rectangle → area card filtered to the shape (12 sites; 11 congested, 8 critical cells) | PASS (screenshot 02) |
 | Browser: click a tower → area becomes 2 km around it (GEOR-4130) | PASS (screenshot 07) |
-| Browser: Summary, Evidence and Report tabs; reopen a saved investigation from the Hermes ledger | PASS (screenshots 03, 04) |
+| Browser: Summary, Evidence and Report tabs; reopen a saved investigation from the Hermes ledger (the reopened rectangle keeps its exact shape) | PASS (screenshots 03, 04) |
 | Browser: click evidence row CK9926 → cyan ring and fly-to on its site (12 of 13 rows have a location; the 13th is the "0 NTT tickets" summary) | PASS (screenshot 05) |
-| Browser: pin the CK9926 point on the map → pane shows "11 evidence rows from this run within 1.5 km" | PASS (screenshot 06) |
+| Browser: pin the CK9926 point on the map → pane shows "11 evidence rows from this run within 1.5 km" | PASS (screenshot 06; the pin click targets the highlight ring at the map centre after the fly-to, because Kepler draws markers on a canvas without DOM selectors) |
+| Browser: area card on a server without `get_business_demand_signals` (your current 8126) | honest fallback: "Demand signals unavailable: … restart it on the latest main"; the other blocks still load (screenshot 10) |
+| Browser, after merging main: Order 4 "Show last validated run" (`bd214774…`, from the ledger), Order 6 Decision Time Machine and Order 7 commercial applications | render with their synthetic, simulated or assumption labels (screenshots 08, 11, 12); no new LLM run was started |
+| Clicking a tower with no evidence nearby | the Evidence tab still lists every row (the "near this tower" filter applies only when there are rows near it) |
 | No stale area data for a new selection | Results are keyed by the area. A reopened run reports against its own recorded area, read from its prompt, not the current selection. |
 | No duplicate overlays | The highlight and findings layers replace their own dataset each time. |
 
@@ -144,3 +150,44 @@ The frontend reaches the existing services:
 - **Demand signals** need the MLPredict server from main after PR #13. An older running server shows "not available on the running mlpredict server".
 - **Reopened polygon runs** are checked against their recorded centre and radius (the prompt carries the bounding box, not the full ring).
 - **Synthetic data everywhere:** NetOps, intel, ML, opportunity and commercial figures are labelled synthetic, ML predicted or graph-ranked in the UI.
+
+## Running it on your MacBook
+
+These steps start from the normal `run_all.py` stack and change no code. Run them in this order.
+
+1. **Menara MCPs, NetOps and the frontend:**
+   ```bash
+   cd backend && python run_all.py
+   ```
+   Restart this after merging, so MLPredict on 8126 has `get_business_demand_signals`. If LightGBM fails on the host because `libomp` is missing, run MLPredict in Docker instead (`backend/mlpredict-mcp/compose.yaml`).
+2. **NetOps for Hermes, without `--search`, on port 8010.** This is temporary; your normal 8000 server stays as it is. It uses `backend/netops-mcp/data` (copy `netops.duckdb`, `places_my.parquet` and `boundaries_my.parquet` there if this checkout has none):
+   ```bash
+   cd backend/netops-mcp && uv run python -m netops_mcp.server --http --host 0.0.0.0 --port 8010
+   ```
+3. **Opportunity Graph on 8127**, needed for Orders 4, 6 and 7:
+   ```bash
+   cd backend && uv run python -m opportunity_mcp --transport streamable-http --port 8127
+   ```
+4. **Hermes.** Pull the model once with `ollama pull qwen3.5:9b`, then:
+   ```bash
+   cd hermes-multi-agent && NETOPS_MCP_URL=http://host.docker.internal:8010/mcp HERMES_TASK_TIMEOUT_SECONDS=900 \
+     HERMES_INVESTIGATION_TIMEOUT_SECONDS=1500 docker compose -p ai-elevate-hermes up -d --force-recreate
+   ```
+5. **Check:** `curl -s localhost:8011/api/agents`. Orchestrator, Business, Engineer and Hypothesis should be available. Forecast stays unavailable until Weather ML runs on 8002.
+
+## Screenshots (`docs/order5_5/`)
+
+| File | Shows |
+|---|---|
+| 01 | Five-agent roster |
+| 02 | Drawn rectangle → area card |
+| 03 | Summary, area scope partly respected |
+| 04 | Report |
+| 05 | Evidence → map highlight |
+| 06 | Map → pane for CK9926 |
+| 07 | Tower click → area |
+| 08 | Agent-validated opportunities |
+| 09 | Graph-ranked opportunities |
+| 10 | Area card fallback labels |
+| 11 | Order 6 Decision Time Machine |
+| 12 | Order 7 commercial applications |
