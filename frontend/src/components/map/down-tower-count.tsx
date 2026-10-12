@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ActionTypes, removeDataset, replaceDataInMap, updateMap, wrapTo } from "@kepler.gl/actions";
+import { ActionTypes, layerVisConfigChange, removeDataset, replaceDataInMap, updateMap, wrapTo } from "@kepler.gl/actions";
 import { WebMercatorViewport, flyToViewport, getFlyToDuration } from "@math.gl/web-mercator";
 import { RefreshCw } from "lucide-react";
 
@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-import { DOWN_TOWERS_DATA_ID, downTowersDataset } from "./down-towers";
+import { DOWN_TOWERS_DATA_ID, layerTowers, TOWER_LAYERS, towerLayerDataset, UP_SIZE_SWITCH_ZOOM, UP_TOWERS_LAYER_ID } from "./down-towers";
 import type { makeKeplerStore } from "./kepler-store";
-import { refreshTowerStatus, TOWER_STATUS_REFRESH_MS, type TowerPin, useTowerStatus } from "./tower-status";
+import { refreshTowerStatus, TOWER_STATUS_REFRESH_MS, type TowerPin, type TowerStatus, useTowerStatus } from "./tower-status";
 
 type KeplerStore = ReturnType<typeof makeKeplerStore>;
 type KeplerAction = { type: (typeof ActionTypes)[keyof typeof ActionTypes] };
@@ -28,7 +28,7 @@ type Instance = {
   mapState: MapState;
   visState: {
     datasets: Record<string, Dataset | undefined>;
-    layers: { id: string; config: { dataId: string } }[];
+    layers: { id: string; config: { dataId: string; visConfig: { fixedRadius?: boolean } } }[];
     clicked?: Clicked | null;
   };
   uiState: { activeSidePanel: string | null };
@@ -158,7 +158,7 @@ function useFlyToClickedDownTower(store: KeplerStore, mapId: string, panelWidth:
   }, [store, mapId]);
 }
 
-/** The tower names in the map's "Tower outages" dataset. */
+/** The tower names in one of the map's tower datasets. */
 function datasetTowers(dataset: Dataset) {
   const column = dataset.fields.findIndex((f) => f.name === "tower");
   if (column < 0) return undefined;
@@ -166,31 +166,57 @@ function datasetTowers(dataset: Dataset) {
 }
 
 /**
- * Keeps the map's "Tower outages" layer on the live list: a refresh that finds the network changed,
- * or a saved chat restored with an old list, swaps the rows in place (the layer and its styling
- * stay). Once nothing is down the dataset goes. A map without the dataset is left alone.
+ * Keeps the map's tower layers (outages, degraded, up) on the live lists: a refresh that finds the
+ * network changed, or a saved chat restored with old lists, swaps the rows in place (the layers and
+ * their styling stay). A layer whose towers are all gone loses its dataset. A map without a
+ * layer's dataset is left alone.
  */
-function useLiveDownTowers(store: KeplerStore, mapId: string, towers: TowerPin[] | undefined) {
+function useLiveTowerLayers(store: KeplerStore, mapId: string, status: TowerStatus | undefined) {
   useEffect(() => {
-    if (!towers) return;
-    const live = towerKey(towers.map((t) => t.enodeb_name));
+    if (!status) return;
+    const layers = TOWER_LAYERS.map((layer) => {
+      const towers = layerTowers(status, layer);
+      return { layer, towers, live: towerKey(towers.map((t) => t.enodeb_name)) };
+    });
     const dispatch = (action: KeplerAction) => store.dispatch(wrapTo(mapId, action));
-    let checked: Dataset | undefined;
+    const checked = new Map<string, Dataset>();
 
     const sync = () => {
-      const dataset = read(store, mapId)?.visState.datasets[DOWN_TOWERS_DATA_ID];
-      if (!dataset || dataset === checked) return;
-      checked = dataset;
-      const names = datasetTowers(dataset);
-      if (!names || towerKey(names) === live) return;
+      for (const { layer, towers, live } of layers) {
+        const dataset = read(store, mapId)?.visState.datasets[layer.dataId];
+        if (!dataset || dataset === checked.get(layer.dataId)) continue;
+        checked.set(layer.dataId, dataset);
+        const names = datasetTowers(dataset);
+        if (!names || towerKey(names) === live) continue;
 
-      const next = downTowersDataset(towers);
-      if (!next) dispatch(removeDataset(DOWN_TOWERS_DATA_ID));
-      else dispatch(replaceDataInMap({ datasetToReplaceId: DOWN_TOWERS_DATA_ID, datasetToUse: next, options: { centerMap: false } }));
+        const next = towerLayerDataset(layer, towers);
+        if (!next) dispatch(removeDataset(layer.dataId));
+        else dispatch(replaceDataInMap({ datasetToReplaceId: layer.dataId, datasetToUse: next, options: { centerMap: false } }));
+      }
     };
     sync();
     return store.subscribe(sync);
-  }, [store, mapId, towers]);
+  }, [store, mapId, status]);
+}
+
+/**
+ * Sizes the up towers on the ground below UP_SIZE_SWITCH_ZOOM and on screen from it, so the healthy
+ * network fades in as the map zooms in but never draws bigger than an outage. kepler has no cap on
+ * a ground-sized dot, so the layer's mode flips as the zoom crosses the switch.
+ */
+function useUpTowerSize(store: KeplerStore, mapId: string) {
+  useEffect(() => {
+    const sync = () => {
+      const instance = read(store, mapId);
+      const layer = instance?.visState.layers.find((l) => l.id === UP_TOWERS_LAYER_ID);
+      if (!instance || !layer) return;
+      const fixedRadius = instance.mapState.zoom < UP_SIZE_SWITCH_ZOOM;
+      if (layer.config.visConfig.fixedRadius === fixedRadius) return;
+      store.dispatch(wrapTo(mapId, layerVisConfigChange(layer as never, { fixedRadius })));
+    };
+    sync();
+    return store.subscribe(sync);
+  }, [store, mapId]);
 }
 
 /** Whether the pill should pulse: for a few seconds after a refresh finds new outages. */
@@ -238,7 +264,8 @@ function StatTile({ value, label, className }: { value: number; label: string; c
 export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStore; mapId: string; panelWidth: number }) {
   const { status, error, loading } = useTowerStatus();
   const down = status?.down;
-  useLiveDownTowers(store, mapId, down);
+  useLiveTowerLayers(store, mapId, status);
+  useUpTowerSize(store, mapId);
   const pulsing = usePulse(status?.newlyDown, status?.fetchedAt);
 
   const inView = useSyncExternalStore(
@@ -299,7 +326,7 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
           {/* right-14 clears kepler's control column (32px buttons in 12px padding); top-3 lines up with them */}
           <button
             type="button"
-            aria-label={`${count} ${count === 1 ? "outage" : "outages"}, ${status.degraded} degraded. Show network status`}
+            aria-label={`${count} ${count === 1 ? "outage" : "outages"}, ${status.degraded.length} degraded. Show network status`}
             className="absolute top-3 right-14 z-10 flex h-8 items-center gap-2 rounded-full border bg-background/95 px-3 text-[13px] whitespace-nowrap shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur transition-colors hover:bg-accent"
           >
             {pulsing ? <span aria-hidden="true" className="absolute -inset-px rounded-full ring-2 ring-red motion-safe:animate-pulse" /> : null}
@@ -317,10 +344,10 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
             )}
             {newCount ? <span className="rounded bg-red/15 px-1 py-0.5 text-[10px] leading-none font-medium text-red">{newCount} new</span> : null}
             {count && inView < count ? <span className="text-muted-foreground max-md:hidden">· {inView} in view</span> : null}
-            {status.degraded ? (
+            {status.degraded.length ? (
               <span className="flex items-center gap-1.5 border-l pl-2 max-lg:hidden">
                 <Dot className="bg-amber" />
-                <span className="font-semibold tabular-nums text-amber">{status.degraded}</span>
+                <span className="font-semibold tabular-nums text-amber">{status.degraded.length}</span>
                 <span className="text-muted-foreground">degraded</span>
               </span>
             ) : null}
@@ -351,7 +378,7 @@ export function DownTowerCount({ store, mapId, panelWidth }: { store: KeplerStor
 
           <div className="grid grid-cols-3 gap-2">
             <StatTile value={count} label="Outage" className="text-red" />
-            <StatTile value={status.degraded} label="Degraded" className="text-amber" />
+            <StatTile value={status.degraded.length} label="Degraded" className="text-amber" />
             <StatTile value={inView} label="Outage in view" />
           </div>
 

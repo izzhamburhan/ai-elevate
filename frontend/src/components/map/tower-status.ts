@@ -16,7 +16,8 @@ export type TowerPin = { enodeb_name: string; site_id: string; town: string; sta
 
 export type TowerStatus = {
   down: TowerPin[];
-  degraded: number;
+  degraded: TowerPin[];
+  up: TowerPin[];
   /** The tower MCP's scenario clock (ISO, +08:00), not the browser's. */
   asOf?: string;
   synthetic: boolean;
@@ -29,7 +30,7 @@ export type TowerStatusState = { status?: TowerStatus; error?: string; loading: 
 
 type Envelope = { error?: string; synthetic?: boolean; as_of?: string; data?: { towers?: TowerPin[] } };
 
-async function listTowers(status: "DOWN" | "DEGRADED"): Promise<Envelope> {
+async function listTowers(status: "DOWN" | "DEGRADED" | "UP"): Promise<Envelope> {
   const res = await fetch("/api/menara/call", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,19 +50,20 @@ function set(next: Partial<TowerStatusState>) {
   listeners.forEach((listener) => listener());
 }
 
-/** Fetches the down and degraded towers across Malaysia, joining a request already in flight. */
+/** Fetches the down, degraded and up towers across Malaysia, joining a request already in flight. */
 export function refreshTowerStatus(): Promise<TowerStatus> {
   inflight ??= (async () => {
     set({ loading: true });
     try {
-      const [down, degraded] = await Promise.all([listTowers("DOWN"), listTowers("DEGRADED")]);
+      const [down, degraded, up] = await Promise.all([listTowers("DOWN"), listTowers("DEGRADED"), listTowers("UP")]);
       const towers = down.data?.towers ?? [];
       const previous = state.status && new Set(state.status.down.map((t) => t.enodeb_name));
       const status: TowerStatus = {
         down: towers,
-        degraded: degraded.data?.towers?.length ?? 0,
+        degraded: degraded.data?.towers ?? [],
+        up: up.data?.towers ?? [],
         asOf: down.as_of,
-        synthetic: Boolean(down.synthetic || degraded.synthetic),
+        synthetic: Boolean(down.synthetic || degraded.synthetic || up.synthetic),
         newlyDown: previous ? towers.map((t) => t.enodeb_name).filter((name) => !previous.has(name)) : [],
         fetchedAt: Date.now(),
       };
