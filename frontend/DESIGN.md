@@ -150,14 +150,20 @@ Show status with a word or an icon as well as the color. Color must never be the
 The map follows the Menara command center's map (the `menara-command-tower` repo, its
 `static/index.html`).
 
-**Basemaps** (`components/map/basemaps.ts`): OpenStreetMap's standard raster tiles.
+**Basemaps** (`components/map/basemaps.ts`): Protomaps' vector styles over self-hosted
+OpenStreetMap tiles (`npm run basemap`, see the README), so roads and labels stay sharp at any zoom.
 
-- `elevate-dark`: the tiles inverted, hue-rotated 195°, dimmed and desaturated, which gives dark
-  green land and blue-grey sea. The reference does this with a CSS filter. Here it is done with
-  MapLibre raster paint, so the data layers on top are never filtered.
-- `elevate-light`: the same tiles, desaturated.
-- The theme picks one (`BASEMAP_FOR_THEME`). Chats saved on the old CARTO basemaps switch to them
-  too.
+- `elevate-dark`: warm near-black land, blue-grey sea and dark green woods. `elevate-light`: the
+  same map, quiet and desaturated. Both are Protomaps' flavors with colors sampled from the raster
+  fallback, so the two read as the same map.
+- Without the tile files, the same ids fall back to OpenStreetMap's standard raster tiles. Its
+  dark map is the tiles inverted, hue-rotated 195°, dimmed and desaturated, as the reference does
+  with a CSS filter. Here it is MapLibre raster paint, so the data layers on top are never filtered.
+- `osm-dark` / `osm-light`: OpenStreetMap's raster tiles with the same treatment, always offered.
+  The Basemap map control (`basemap-control.tsx`, in kepler's control column) switches between
+  Elevate and OpenStreetMap. The choice is saved under `elevate-basemap` and applies to every chat.
+- The theme and that choice pick one (`basemapFor` in `basemap-choice.ts`). Chats saved on any of
+  these, or on the old CARTO basemaps, switch to it too.
 - kepler misses the basemap's credit on first load, so `kepler-map.tsx` re-announces the style once
   the map is idle. Keep that: OpenStreetMap's license requires the credit.
 
@@ -181,6 +187,12 @@ Rules:
   with only the towers that are DOWN, as reported by the tower MCP, each drawn with the down-tower
   marker. The markers follow the "Towers down" layer: hide it and they go. With reduced motion,
   the rings hold still.
+- **Network status pill** (`down-tower-count.tsx`): at the map's top right, beside kepler's map
+  controls. It shows towers down (red) and how many the map shows, towers degraded (amber), the
+  tower MCP's clock in MYT and a "Synthetic" tag. `tower-status.ts` refreshes it every minute. When
+  a refresh finds new outages, the pill pulses and tags them "New". The same refresh rewrites the
+  "Towers down" rows on the open map, including a saved chat's map. The pill opens a list by state,
+  where a tower flies the map to it and "Show all down towers" fits them beside the side panel.
 - `kepler-theme.ts` repeats the palette as hex, because kepler does color math on its theme values.
   When you change the palette, update that file too.
 - Some kepler styles have no theme key (for example the panel title's weight and letter-spacing).

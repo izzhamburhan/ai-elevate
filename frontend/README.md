@@ -5,10 +5,23 @@ Next.js + kepler.gl map workspace with an AI chat assistant in the side panel.
 ```bash
 npm ci
 cp .env.example .env.local   # then fill in keys
+npm run basemap              # optional: the sharp vector basemap (about 500 MB)
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+### Basemap
+
+The map's basemap is self-hosted vector tiles: Protomaps' OpenStreetMap build, cut to Malaysia.
+`npm run basemap` downloads the tiles (`malaysia.pmtiles`, about 500 MB) with the fonts and icons
+they need into `public/basemap/`, which git ignores. Run it again to refresh the map data. Without
+these files the map falls back to OpenStreetMap's raster tiles, which are blurrier and fair-use only.
+
+To serve the files from a CDN or bucket instead, upload the `public/basemap/` folder and set
+`NEXT_PUBLIC_BASEMAP_URL` to it before `npm run build`. The host must answer HTTP range requests
+and allow this app's origin (CORS). The tiles and styles are free for commercial use; keep the
+"Protomaps © OpenStreetMap contributors" credit on the map.
 
 Clean installation was verified with Node 22.23.2 / npm 10.9.8. Keep the project `.npmrc`: the existing React 19/Kepler dependency graph uses legacy peer resolution. The required map adapter is explicitly pinned to the existing `@deck.gl/mapbox@9.3.11`; the lock repair changes no retained package versions. Existing upstream peer-range conflicts remain a hackathon dependency limitation.
 

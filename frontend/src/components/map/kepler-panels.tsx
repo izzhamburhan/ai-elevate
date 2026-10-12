@@ -4,6 +4,7 @@ import {
   AddDataButtonFactory,
   CollapseButtonFactory,
   CustomPanelsFactory,
+  MapControlFactory,
   PanelHeaderFactory,
   PanelToggleFactory,
   SidePanelFactory,
@@ -13,6 +14,7 @@ import { Bot, ChevronLeft, CloudRain, Maximize2, MessageSquare, Minimize2 } from
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
+import { BasemapControl } from "./basemap-control";
 import { useChatFullscreen } from "./chat-fullscreen";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
@@ -178,6 +180,19 @@ function ElevateAddDataButtonFactory() {
   return AddDataButton;
 }
 
+/** kepler's map controls with the basemap switch after its split and 3D buttons. */
+function ElevateMapControlFactory(...deps: Parameters<typeof MapControlFactory>) {
+  const MapControl = MapControlFactory(...deps);
+  const actions = [...(MapControl.defaultActionComponents ?? [])];
+  actions.splice(2, 0, BasemapControl);
+
+  const ElevateMapControl = (props: React.ComponentProps<typeof MapControl>) => (
+    <MapControl {...props} actionComponents={actions} />
+  );
+  return ElevateMapControl;
+}
+ElevateMapControlFactory.deps = MapControlFactory.deps;
+
 // Order matters: injecting the side panel re-provides its deps (incl. the default
 // PanelHeader, PanelToggle, CollapseButton, CustomPanels and AddDataButton factories), so
 // their replacements must be injected after it.
@@ -188,4 +203,5 @@ export const KeplerGl = injectComponents([
   [CollapseButtonFactory, ElevateCollapseButtonFactory],
   [CustomPanelsFactory, ElevateCustomPanelsFactory],
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
+  [MapControlFactory, ElevateMapControlFactory],
 ] as never);

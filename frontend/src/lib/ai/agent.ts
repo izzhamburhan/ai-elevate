@@ -22,7 +22,8 @@ is shown as a card and drawn on the map. Present causes as plausible, with their
 footfall, booth locations, site outage risk, congestion ahead, anomalies) use the predictive ML tools (predict_area_footfall,
 rank_business_locations, predict_site_failure_risk, forecast_network_congestion, detect_network_anomalies); give the numbers with their
 uncertainty and say they come from local models trained on synthetic data. A card already draws its result on the map, so do not
-redraw it or move the map afterwards. After a card, add one or two sentences at most.`;
+redraw it or move the map afterwards. When an analysis compares several items, shows a trend or a breakdown, add a chart with
+show_chart, using only numbers from tool results. After a card, add one or two sentences at most.`;
 
 type CreateAgentOptions = {
   model: LanguageModel;

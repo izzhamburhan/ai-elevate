@@ -4,6 +4,7 @@ import { defineToolkit } from "@assistant-ui/react";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
+import { ChartCard, chartSpecSchema, checkChart } from "@/components/chat/chart-card";
 import { AreaCard, type Section } from "@/components/map/panels/area-card";
 import { HealPanel } from "@/components/map/panels/heal-panel";
 import { INTEL_TOOLS, IntelCard, type IntelTool } from "@/components/map/panels/intel-card";
@@ -116,6 +117,23 @@ export const menaraToolkit = defineToolkit({
       ) : (
         <Working text={`Finding ${args.place ?? "the place"}…`} />
       ),
+  },
+
+  show_chart: {
+    type: "frontend",
+    display: "standalone",
+    description:
+      "Show a chart in the answer when a picture makes an analysis clearer: comparing several items (bar, or horizontal_bar for long " +
+      "names), a trend over time (line or area), shares of a whole (pie) or two measures against each other (scatter). Use ONLY numbers " +
+      "you already got from tool results in this conversation, never estimates or invented values, and say which result in `source`. " +
+      "Keep it to one clear chart (up to 6 series, 60 categories). Skip it for one or two numbers, or when a card already shows the same chart.",
+    parameters: chartSpecSchema,
+    execute: async (spec) => {
+      const problem = checkChart(spec);
+      if (problem) throw new Error(problem);
+      return { shown: true, note: "The chart is shown to the user; refer to it in a sentence instead of repeating the numbers." };
+    },
+    render: ({ args, result }) => (result ? <ChartCard spec={args} /> : <Working text="Drawing the chart…" />),
   },
 
   describe_trail: {
