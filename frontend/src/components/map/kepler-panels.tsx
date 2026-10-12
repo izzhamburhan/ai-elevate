@@ -9,15 +9,17 @@ import {
   SidePanelFactory,
   injectComponents,
 } from "@kepler.gl/components";
-import { ChevronLeft, MessageSquare } from "lucide-react";
+import { ChevronLeft, CloudRain, MessageSquare } from "lucide-react";
 
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
 import { AssistantPanel } from "./panels/assistant-panel";
+import { WeatherPanel } from "./panels/weather-panel";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
   en: {
     "sidebar.panels.assistant": "Assistant",
+    "sidebar.panels.weather": "Weather",
   },
 };
 
@@ -27,6 +29,12 @@ const customPanels = [
     label: "sidebar.panels.assistant",
     iconComponent: (props: { height?: string }) => <MessageSquare size={props.height ?? 18} />,
     component: AssistantPanel,
+  },
+  {
+    id: "weather",
+    label: "sidebar.panels.weather",
+    iconComponent: (props: { height?: string }) => <CloudRain size={props.height ?? 18} />,
+    component: WeatherPanel,
   },
 ];
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Provider } from "react-redux";
-import { addDataToMap, mapStyleChange, wrapTo } from "@kepler.gl/actions";
+import { addDataToMap, addLayer, mapStyleChange, reorderLayer, wrapTo } from "@kepler.gl/actions";
 import { processCsvData } from "@kepler.gl/processors";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -13,8 +13,45 @@ import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { BASEMAP_FOR_THEME, MALAYSIA_VIEW, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { useKeplerBridge } from "./use-kepler-bridge";
+import { runKeplerCommand } from "@/lib/kepler/commands";
+import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
 
 const SAMPLE_DATA_URL = "/data/world-cities.csv";
+const DEMO_GEOGRAPHY_URL = "/data/weather-demo-outline.geojson";
+
+/** Local, coarse Natural Earth context replaces remote tiles only in the opt-in pitch. */
+async function loadDemoGeography(store: ReturnType<typeof makeKeplerStore>) {
+  const response = await fetch(DEMO_GEOGRAPHY_URL);
+  if (!response.ok) throw new Error("Cached demo geography is unavailable");
+  const geojson = await response.json();
+  const dataId = "weather-demo-outline";
+  await runKeplerCommand(store, MAP_ID, "load_data", {
+    dataId, label: "Natural Earth geography (public domain, coarse)", geojson,
+    autoCreateLayers: false, centerMap: false,
+  });
+  const layerId = "weather-demo-outline-layer";
+  // The saved GeoJSON schema examines visConfig before constructing layer defaults.
+  // Supply it in the native action so no intermediate layer has undefined radius settings.
+  store.dispatch(wrapTo(MAP_ID, addLayer({
+    id: layerId, type: "geojson",
+    config: {
+      dataId, label: "Local geographic context · Natural Earth", isVisible: true,
+      columns: { geojson: "_geojson" }, color: [100, 116, 139],
+      visConfig: { filled: true, stroked: true, opacity: 0.12, strokeOpacity: 0.45,
+        strokeColor: [148, 163, 184], thickness: 0.6, allowHover: false,
+        radius: 10, radiusRange: [0, 50], enable3d: false, wireframe: false },
+    },
+    visualChannels: { colorField: null, colorScale: "quantile", strokeColorField: null,
+      strokeColorScale: "quantile", sizeField: null, sizeScale: "linear",
+      heightField: null, heightScale: "linear", radiusField: null, radiusScale: "linear" },
+  })));
+  const state = store.getState().keplerGl as Record<string, {
+    visState: { layerOrder: Parameters<typeof reorderLayer>[0] };
+  }>;
+  // Kepler renders the order in reverse; keep the geographic context beneath all points.
+  const order = state[MAP_ID].visState.layerOrder.filter((entry) => entry !== layerId);
+  store.dispatch(wrapTo(MAP_ID, reorderLayer([...order, layerId])));
+}
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -56,7 +93,7 @@ export default function KeplerMap() {
 
     fetch(SAMPLE_DATA_URL)
       .then((res) => res.text())
-      .then((csv) => {
+      .then(async (csv) => {
         const data = processCsvData(csv);
         if (!data) throw new Error("Sample CSV could not be parsed");
         store.dispatch(
@@ -109,6 +146,7 @@ export default function KeplerMap() {
             },
           }),
         );
+        if (WEATHER_DEMO_MODE) await loadDemoGeography(store);
       })
       .catch((err) => console.error("Failed to load sample data", err));
   }, [store]);
