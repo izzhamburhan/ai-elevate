@@ -516,40 +516,111 @@ def build_coverage_layers(ctx):
 # ---------------------------------------------------------------------------
 # NTT, maintenance, congestion table, dashboards, CTT
 # ---------------------------------------------------------------------------
+NTT_COLUMNS = ["id", "mid", "business_event", "ntt_no", "created_date", "network_element_ne_id",
+               "network_element_type", "network_element_brand", "network_element_port", "region", "ptt",
+               "building", "fault_category", "service_impacted", "possible_symptoms", "resp_unit", "ettr",
+               "ettr_counter", "problem_desc", "major_breakdown", "faulty_severity", "status",
+               "network_element_card_id", "network_element_card", "network_element_port_id"]
+NTT5G_COLUMNS = ["id", "source_initiator", "destination", "dnb_incident_id", "tm_incident_id", "esb_id", "summary",
+                 "incident_description", "node_ci", "hpd_ci", "incident_type", "incident_impact", "incident_urgency",
+                 "incident_priority", "incident_status", "assigned_group", "incident_categorization_tier1",
+                 "incident_categorization_tier2", "incident_categorization_tier3", "resolution_category_tier1",
+                 "resolution_category_tier2", "resolution_category_tier3", "resolution_note", "region",
+                 "transaction_type", "event_start_time", "event_end_time", "submit_date", "last_modified_date",
+                 "last_resolved_date"]
+PM_COLUMNS = ["RFC ID", "Creation_Date", "Week", "Status", "Title", "Planned Start", "Planned End",
+              "Requester Name", "Requestor Division", "RFC Type", "Reason", "NCA/CA", "Sub Network", "Region",
+              "Hostname"]
+
+
+def ntt_ticket(ctx, rng, events, outage_days, site, created, fault, final, forced_symptom=None,
+               problem=None, major=None, resp=None):
+    """Append the update events of one 4G NTT to `events` and its outage days to `outage_days`."""
+    ref_dt = ctx.ref_dt
+    symptom = forced_symptom or rng.choice(R.NTT_SYMPTOMS)
+    ettr = created + dt.timedelta(hours=rng.uniform(4, 36))
+    ne = site["id"]
+    if rng.random() < 0.1:
+        other = ctx.index4g.nearest(site["lat"], site["lng"], k=2)[-1]
+        ne = f"{site['id']},{other['id']}"
+    ntt_no = f"NTT-{created:%Y%m%d}-{rng.randint(10000, 99999)}"
+    n_rows = rng.randint(1, 3)
+    resp = resp or ("LTE 4G" if rng.random() < 0.92 else rng.choice(["IP CORE", "TRANSMISSION"]))
+    base = {
+        "ntt_no": ntt_no, "created": created, "ne": ne, "site": site, "fault": fault, "symptom": symptom,
+        "ettr": ettr, "resp": resp,
+        "impact": f"Unifi Mobile:{rng.randint(50, 3000)}",
+        "major": major or ("Y" if fault == "Total Outage" and rng.random() < 0.3 else "N"),
+        "sev": {"Total Outage": "Critical", "Partial Outage": "Major"}.get(fault, "Minor"),
+        "problem": problem or R.NTT_PROBLEMS[symptom],
+    }
+    span = max((min(ettr, ref_dt) - created).total_seconds(), 600)
+    for k in range(n_rows):
+        last = k == n_rows - 1
+        when = created + dt.timedelta(seconds=span * k / max(n_rows, 1))
+        status = final if last else "Open"
+        events.append((when, base, status, "TT_CREATE" if k == 0 else ("TT_CLOSE" if last and final != "Open" else "TT_UPDATE")))
+    if fault in ("Total Outage", "Partial Outage") and resp == "LTE 4G":
+        end = ref_dt if final == "Open" else ettr
+        d = created.date()
+        while d <= end.date():
+            outage_days.add((site["id"], d))
+            d += dt.timedelta(days=1)
+    return ntt_no
+
+
+def ntt_rows(rng, events, first_id=1):
+    """ntt_granite rows for `events`, ids from `first_id` in event-time order."""
+    events.sort(key=lambda e: e[0])
+    rows = []
+    for i, (when, b, status, event) in enumerate(events, start=first_id):
+        s = b["site"]
+        rows.append((i, f"MID{100000 + i}", event, b["ntt_no"], b["created"], b["ne"], "E NODE B",
+                     s["vendor"].upper(), f"S1-{rng.randint(1, 4)}", s["region"].upper(), s["state"],
+                     f"{s['id']}_{s['cluster']['name'].upper().replace(' ', '')}", b["fault"], b["impact"],
+                     b["symptom"], b["resp"], b["ettr"], int((b["ettr"] - b["created"]).total_seconds() // 3600),
+                     b["problem"], b["major"], b["sev"], status, f"CARD-{rng.randint(1, 8)}",
+                     "BBU", f"PORT-{rng.randint(1, 12)}"))
+    return rows
+
+
+def ntt5g_incident(rng, ref_dt, inc_events, site, k, created, final, prio=None):
+    """Append the CREATE (+ UPDATE) events of one 5G DNB incident to `inc_events`."""
+    tm_id = f"INC-{created:%Y%m%d}-{100000 + k:06d}"
+    prio = prio or rng.choice(["Critical", "High", "Medium", "Low"])
+    end = created + dt.timedelta(hours=rng.uniform(2, 48))
+    for j, (tx, st) in enumerate([("CREATE", "Assigned")] + ([("UPDATE", final)] if final != "Assigned" else [])):
+        when = created if j == 0 else min(end, ref_dt)
+        inc_events.append((when, site, tm_id, k, st, tx, created, end, prio, final))
+    return tm_id
+
+
+def ntt5g_rows(rng, inc_events, first_id=1):
+    """ntt_5g_ntt5g rows for `inc_events`, ids from `first_id` in event-time order."""
+    inc_events.sort(key=lambda e: e[0])
+    rows = []
+    for i, (when, site, tm_id, k, st, tx, created, end, prio, final) in enumerate(inc_events, start=first_id):
+        closed = st in R.NTT5G_CLOSED
+        rows.append((i, rng.choice(["DNB-MS-MY", "ITSM"]), rng.choice(["TM", "DNB"]), f"DNB{10000000 + k}", tm_id,
+                     f"ESB-{1000000 + i}", f"5G cell down at {site['id']}", "gNodeB service affecting alarm",
+                     f"{site['id']}_gNB", site["id"], "Infrastructure Event",
+                     rng.choice(["1-Extensive/Widespread", "2-Significant/Large", "3-Moderate/Limited", "4-Minor/Localized"]),
+                     rng.choice(["1-Critical", "2-High", "3-Medium", "4-Low"]), prio, st,
+                     rng.choice(["DNB NOC", "TM RAN Ops", "Field Ops"]), "RAN", "Network", "gNodeB",
+                     "Hardware" if closed else None, "Replace" if closed else None, "RRU" if closed else None,
+                     "Faulty RRU replaced, service restored." if closed else None,
+                     f"MY DNB {site['region'].upper()}", tx, created, end if closed else None, created, when,
+                     end if closed else None))
+    return rows
+
+
 def build_ntt(ctx):
     rng, ref_dt = ctx.rng, ctx.ref_dt
     events = []
     outage_days = set()
 
     def ticket(site, created, fault, final, forced_symptom=None):
-        symptom = forced_symptom or rng.choice(R.NTT_SYMPTOMS)
-        ettr = created + dt.timedelta(hours=rng.uniform(4, 36))
-        ne = site["id"]
-        if rng.random() < 0.1:
-            other = ctx.index4g.nearest(site["lat"], site["lng"], k=2)[-1]
-            ne = f"{site['id']},{other['id']}"
-        ntt_no = f"NTT-{created:%Y%m%d}-{rng.randint(10000, 99999)}"
-        n_rows = rng.randint(1, 3)
-        resp = "LTE 4G" if rng.random() < 0.92 else rng.choice(["IP CORE", "TRANSMISSION"])
-        base = {
-            "ntt_no": ntt_no, "created": created, "ne": ne, "site": site, "fault": fault, "symptom": symptom,
-            "ettr": ettr, "resp": resp,
-            "impact": f"Unifi Mobile:{rng.randint(50, 3000)}",
-            "major": "Y" if fault == "Total Outage" and rng.random() < 0.3 else "N",
-            "sev": {"Total Outage": "Critical", "Partial Outage": "Major"}.get(fault, "Minor"),
-        }
-        span = max((min(ettr, ref_dt) - created).total_seconds(), 600)
-        for k in range(n_rows):
-            last = k == n_rows - 1
-            when = created + dt.timedelta(seconds=span * k / max(n_rows, 1))
-            status = final if last else "Open"
-            events.append((when, base, status, "TT_CREATE" if k == 0 else ("TT_CLOSE" if last and final != "Open" else "TT_UPDATE")))
-        if fault in ("Total Outage", "Partial Outage") and resp == "LTE 4G":
-            end = ref_dt if final == "Open" else ettr
-            d = created.date()
-            while d <= end.date():
-                outage_days.add((site["id"], d))
-                d += dt.timedelta(days=1)
+        ntt_ticket(ctx, rng, events, outage_days, site, created, fault, final, forced_symptom)
 
     for _ in range(520):
         site = rng.choice(ctx.sites4g)
@@ -564,27 +635,11 @@ def build_ntt(ctx):
         ticket(site, ref_dt - dt.timedelta(hours=rng.uniform(2, 40)), "Total Outage", "Open", "LTE - 4G Service Down")
         ctx.open_outage_sites.add(site["id"])
 
-    events.sort(key=lambda e: e[0])
-    rows = []
-    for i, (when, b, status, event) in enumerate(events, start=1):
-        s = b["site"]
-        rows.append((i, f"MID{100000 + i}", event, b["ntt_no"], b["created"], b["ne"], "E NODE B",
-                     s["vendor"].upper(), f"S1-{rng.randint(1, 4)}", s["region"].upper(), s["state"],
-                     f"{s['id']}_{s['cluster']['name'].upper().replace(' ', '')}", b["fault"], b["impact"],
-                     b["symptom"], b["resp"], b["ettr"], int((b["ettr"] - b["created"]).total_seconds() // 3600),
-                     R.NTT_PROBLEMS[b["symptom"]], b["major"], b["sev"], status, f"CARD-{rng.randint(1, 8)}",
-                     "BBU", f"PORT-{rng.randint(1, 12)}"))
-    bulk_insert(ctx.con, "ntt_granite",
-                ["id", "mid", "business_event", "ntt_no", "created_date", "network_element_ne_id",
-                 "network_element_type", "network_element_brand", "network_element_port", "region", "ptt",
-                 "building", "fault_category", "service_impacted", "possible_symptoms", "resp_unit", "ettr",
-                 "ettr_counter", "problem_desc", "major_breakdown", "faulty_severity", "status",
-                 "network_element_card_id", "network_element_card", "network_element_port_id"], rows)
+    bulk_insert(ctx.con, "ntt_granite", NTT_COLUMNS, ntt_rows(rng, events))
     ctx.con.execute("CREATE TEMP TABLE _outage_days (site_id VARCHAR, dt DATE)")
     bulk_insert(ctx.con, "_outage_days", ["site_id", "dt"], sorted(outage_days))
 
     # 5G (DNB) incidents
-    rows5, n = [], 0
     inc_events = []
     for k in range(170):
         site = rng.choice(ctx.sites5g)
@@ -593,48 +648,37 @@ def build_ntt(ctx):
         p_open = 0.7 if age < 3 else 0.2 if age < 10 else 0.03
         final = rng.choice(R.NTT5G_OPEN) if rng.random() < p_open else weighted(
             rng, [("Resolved", 0.45), ("Closed", 0.45), ("Cancelled", 0.1)])
-        tm_id = f"INC-{created:%Y%m%d}-{100000 + k:06d}"
-        prio = rng.choice(["Critical", "High", "Medium", "Low"])
-        end = created + dt.timedelta(hours=rng.uniform(2, 48))
-        for j, (tx, st) in enumerate([("CREATE", "Assigned")] + ([("UPDATE", final)] if final != "Assigned" else [])):
-            when = created if j == 0 else min(end, ref_dt)
-            inc_events.append((when, site, tm_id, k, st, tx, created, end, prio, final))
-    inc_events.sort(key=lambda e: e[0])
-    for i, (when, site, tm_id, k, st, tx, created, end, prio, final) in enumerate(inc_events, start=1):
-        closed = st in R.NTT5G_CLOSED
-        rows5.append((i, rng.choice(["DNB-MS-MY", "ITSM"]), rng.choice(["TM", "DNB"]), f"DNB{10000000 + k}", tm_id,
-                      f"ESB-{1000000 + i}", f"5G cell down at {site['id']}", "gNodeB service affecting alarm",
-                      f"{site['id']}_gNB", site["id"], "Infrastructure Event",
-                      rng.choice(["1-Extensive/Widespread", "2-Significant/Large", "3-Moderate/Limited", "4-Minor/Localized"]),
-                      rng.choice(["1-Critical", "2-High", "3-Medium", "4-Low"]), prio, st,
-                      rng.choice(["DNB NOC", "TM RAN Ops", "Field Ops"]), "RAN", "Network", "gNodeB",
-                      "Hardware" if closed else None, "Replace" if closed else None, "RRU" if closed else None,
-                      "Faulty RRU replaced, service restored." if closed else None,
-                      f"MY DNB {site['region'].upper()}", tx, created, end if closed else None, created, when,
-                      end if closed else None))
-    bulk_insert(ctx.con, "ntt_5g_ntt5g",
-                ["id", "source_initiator", "destination", "dnb_incident_id", "tm_incident_id", "esb_id", "summary",
-                 "incident_description", "node_ci", "hpd_ci", "incident_type", "incident_impact", "incident_urgency",
-                 "incident_priority", "incident_status", "assigned_group", "incident_categorization_tier1",
-                 "incident_categorization_tier2", "incident_categorization_tier3", "resolution_category_tier1",
-                 "resolution_category_tier2", "resolution_category_tier3", "resolution_note", "region",
-                 "transaction_type", "event_start_time", "event_end_time", "submit_date", "last_modified_date",
-                 "last_resolved_date"], rows5)
+        ntt5g_incident(rng, ref_dt, inc_events, site, k, created, final)
+    bulk_insert(ctx.con, "ntt_5g_ntt5g", NTT5G_COLUMNS, ntt5g_rows(rng, inc_events))
+
+
+def rfc_row(rng, seq, host, region, created, start, end, status, nca="CA", subnet=None, title=None, reason=None):
+    """One Webe_Plan_Maintenance row; `title` defaults to the sub network's standard title."""
+    subnet = subnet or rng.choice(R.PM_SUBNET)
+    return (f"RFC-WEBE-{created:%y%m%d}-{seq:04d}", created, iso(created.date())[1], status,
+            f"{title or R.PM_TITLES[subnet]} - {host}", start, end, rng.choice(R.PERSON_NAMES),
+            rng.choice(R.PM_DIVISION), rng.choice(R.PM_RFC_TYPE), reason or rng.choice(R.PM_REASON), nca, subnet,
+            region, host)
+
+
+def rfc_window(rng, ref_dt, created):
+    """Night-time maintenance window 2-14 days after creation, with a status that fits its timing."""
+    start = (created + dt.timedelta(days=rng.uniform(2, 14))).replace(hour=rng.choice([0, 1, 2, 22, 23]), minute=0, second=0)
+    end = start + dt.timedelta(hours=rng.uniform(2, 8))
+    if end < ref_dt:
+        status = weighted(rng, [("CLOSE", 0.78), ("IMPLEMENTERCANCELLED", 0.08), ("CABREJECT", 0.05),
+                                ("ReqCancel", 0.05), ("CCREJECT", 0.04)])
+    else:
+        status = weighted(rng, [("WIMPLEMENTER", 0.5), ("WCAB", 0.4), ("WCC", 0.1)])
+    return start, end, status
 
 
 def build_plan_maintenance(ctx):
     rng, ref_dt = ctx.rng, ctx.ref_dt
     rows = []
-    seq = 0
 
     def rfc(host, region, created, start, end, status, nca="CA", subnet=None):
-        nonlocal seq
-        seq += 1
-        subnet = subnet or rng.choice(R.PM_SUBNET)
-        rows.append((f"RFC-WEBE-{created:%y%m%d}-{seq:04d}", created, iso(created.date())[1], status,
-                     f"{R.PM_TITLES[subnet]} - {host}", start, end, rng.choice(R.PERSON_NAMES),
-                     rng.choice(R.PM_DIVISION), rng.choice(R.PM_RFC_TYPE), rng.choice(R.PM_REASON), nca, subnet,
-                     region, host))
+        rows.append(rfc_row(rng, len(rows) + 1, host, region, created, start, end, status, nca, subnet))
 
     for _ in range(420):
         if rng.random() < 0.88:
@@ -643,13 +687,7 @@ def build_plan_maintenance(ctx):
         else:
             host, region, subnet = rng.choice(R.CORE_HOSTS), rng.choice(["CENTRAL", "WILAYAH PERSEKUTUAN", "SOUTHERN"]), rng.choice(R.PM_CORE_SUBNET)
         created = ref_dt - dt.timedelta(days=rng.uniform(0, 120))
-        start = (created + dt.timedelta(days=rng.uniform(2, 14))).replace(hour=rng.choice([0, 1, 2, 22, 23]), minute=0, second=0)
-        end = start + dt.timedelta(hours=rng.uniform(2, 8))
-        if end < ref_dt:
-            status = weighted(rng, [("CLOSE", 0.78), ("IMPLEMENTERCANCELLED", 0.08), ("CABREJECT", 0.05),
-                                    ("ReqCancel", 0.05), ("CCREJECT", 0.04)])
-        else:
-            status = weighted(rng, [("WIMPLEMENTER", 0.5), ("WCAB", 0.4), ("WCC", 0.1)])
+        start, end, status = rfc_window(rng, ref_dt, created)
         rfc(host, region, created, start, end, status, "CA" if rng.random() < 0.7 else "NCA", subnet)
     # sites under active maintenance right now (WIMPLEMENTER + CA, window covering ref date)
     for site in rng.sample(ctx.sites4g, 12):
@@ -658,10 +696,7 @@ def build_plan_maintenance(ctx):
         end = ref_dt + dt.timedelta(hours=rng.uniform(4, 48))
         rfc(site["id"], site["region"].upper(), created, start, end, "WIMPLEMENTER", "CA")
         ctx.active_pm_sites.add(site["id"])
-    bulk_insert(ctx.con, "Webe_Plan_Maintenance",
-                ["RFC ID", "Creation_Date", "Week", "Status", "Title", "Planned Start", "Planned End",
-                 "Requester Name", "Requestor Division", "RFC Type", "Reason", "NCA/CA", "Sub Network", "Region",
-                 "Hostname"], rows)
+    bulk_insert(ctx.con, "Webe_Plan_Maintenance", PM_COLUMNS, rows)
 
 
 def build_congested_cells(ctx):
@@ -754,7 +789,9 @@ def build_dashboards(ctx):
                      "Closed" if created.date() < ref - dt.timedelta(days=10) or rng.random() < 0.4 else "Open",
                      rng.choice(R.CTT_ROOT_CAUSES), rng.choice(["Network Root Cause", "Other Root Cause"]),
                      rng.choice(["4G", "4G", "4G", "5G"]), round(lat, 6), round(lng, 6)))
-        key = (created.year, created.month)
+    rows += ctx.hotspot_thd
+    for r in rows:
+        key = (r[1].year, r[1].month)
         monthly[key] = monthly.get(key, 0) + 1
     rows.sort(key=lambda r: r[1])
     rows = [(i, *r[1:]) for i, r in enumerate(rows, start=1)]

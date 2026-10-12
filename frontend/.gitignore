@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# public cert of the GigX gateway (self-signed), not a key
+!certs/gigx-nexa-dev.pem
 
 # debug
 npm-debug.log*

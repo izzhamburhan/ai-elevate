@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from ticket_mcp.server import build_server
 
@@ -25,7 +26,7 @@ def test_server_registers_its_tools(db_file: Path) -> None:
 
 def test_tool_call_returns_a_synthetic_envelope(db_file: Path) -> None:
     result = asyncio.run(build_server(db_file).call_tool("ticket_get_ticket", {"ticket_id": "TK-88213"}))
-    payload = result[1] if isinstance(result, tuple) else result
+    payload: Any = result.structured_content
     assert payload["synthetic"] is True
     assert payload["data"]["ticket_id"] == "TK-88213"
 
@@ -42,7 +43,7 @@ def test_tool_call_create_ntt(db_file: Path) -> None:
             },
         )
     )
-    payload = result[1] if isinstance(result, tuple) else result
+    payload: Any = result.structured_content
     assert payload["synthetic"] is True
     assert payload["data"]["network_element_id"] == "KKRI-0142"
     assert payload["data"]["status"] == "IN_PROGRESS"

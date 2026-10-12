@@ -34,6 +34,8 @@ src/app/api/chat/route.ts
 
 - **DeepSeek**: set `DEEPSEEK_API_KEY`.
 - **OpenAI (GPT-6.1 Sol)**: set `OPENAI_API_KEY`.
+- **Gemma 4 E2B (GigX)**: set `GIGX_API_KEY`. The gateway uses a self-signed cert, which is pinned in
+  `certs/gigx-nexa-dev.pem` (override with `GIGX_CA_CERT` if it is rotated).
 - **Gemma 4 (local)**: install [Ollama](https://ollama.com), run `ollama pull gemma4:e4b`, keep it running.
   Any OpenAI-compatible server works (LM Studio, vLLM, llama.cpp): set `LOCAL_LLM_BASE_URL` and `LOCAL_LLM_MODEL`.
 

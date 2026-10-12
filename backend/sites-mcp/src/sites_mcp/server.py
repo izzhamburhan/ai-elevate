@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from menara_core import settings
 from menara_core.db import connect
 from menara_core.envelope import Envelope
+from menara_core.mcp_server import add_tool_search, serve
 
 from sites_mcp import tools
 
@@ -23,8 +24,10 @@ INSTRUCTIONS = (
 )
 
 
-def build_server(db_path: Path, *, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> FastMCP:
-    mcp = FastMCP(NAME, instructions=INSTRUCTIONS, host=host, port=port)
+def build_server(db_path: Path, *, search: bool = False) -> FastMCP:
+    mcp = FastMCP(NAME, instructions=INSTRUCTIONS)
+    if search:
+        add_tool_search(mcp, NAME)
 
     def run(call: Callable[[Any], Envelope[Any]]) -> dict[str, Any]:
         conn = connect(db_path, owned_tables=tools.OWNED_TABLES)
@@ -66,10 +69,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--search", action="store_true", help="collapse the tool list into BM25 search + call tools")
     parser.add_argument("--db", type=Path, default=None)
     args = parser.parse_args(argv)
-    transport: Literal["stdio", "streamable-http"] = args.transport
-    build_server(args.db or settings.db_path(), host=args.host, port=args.port).run(transport=transport)
+    serve(build_server(args.db or settings.db_path(), search=args.search), args.transport, args.host, args.port)
 
 
 if __name__ == "__main__":

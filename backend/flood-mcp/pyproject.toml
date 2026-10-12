@@ -5,7 +5,7 @@ description = "MCP server: River gauges and flood extent (synthetic data)."
 requires-python = ">=3.13"
 dependencies = [
     "menara-core",
-    "mcp[cli]>=1.9,<2",
+    "fastmcp>=4.1",
 ]
 
 [project.scripts]

@@ -110,7 +110,10 @@ const threadComponents = {
 export function AssistantPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 font-sans text-foreground">
-      <h2 className="truncate text-base font-bold tracking-tight">What will you map?</h2>
+      {/* the thread's 44rem column minus its px-4, so it lines up when the chat is full width */}
+      <h2 className="mx-auto w-full max-w-[42rem] truncate text-base font-bold tracking-tight">
+        What will you map?
+      </h2>
 
       <div className="-mx-4 min-h-0 flex-1">
         <Thread components={threadComponents} />

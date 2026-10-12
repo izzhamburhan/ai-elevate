@@ -6,6 +6,22 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "frontend-running",
+      "url": "http://localhost:3000"
+    },
+    {
+      "name": "ookla-mcp",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["--directory", "backend", "run", "--no-sync", "python", "-m", "ookla_mcp", "--transport", "streamable-http", "--port", "8122", "--search"],
+      "port": 8122
+    },
+    {
+      "name": "dosm-mcp",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["--directory", "backend", "run", "--no-sync", "python", "-m", "dosm_mcp", "--transport", "streamable-http", "--port", "8123", "--search"],
+      "port": 8123
     }
   ]
 }

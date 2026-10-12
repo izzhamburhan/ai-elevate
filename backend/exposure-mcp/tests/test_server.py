@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from typing import Any
 
@@ -15,5 +14,5 @@ def test_server_registers_its_three_tools(db_file: Path) -> None:
 
 def test_a_tool_returns_an_envelope(db_file: Path) -> None:
     result: Any = asyncio.run(build_server(db_file).call_tool("exposure_list_profiles", {}))
-    payload = json.loads(result[0][0].text) if isinstance(result, tuple) else result
+    payload = result.structured_content
     assert payload["synthetic"] is True and payload["evidence"] and len(payload["data"]["profiles"]) == 4

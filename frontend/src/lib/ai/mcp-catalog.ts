@@ -74,6 +74,26 @@ export const BUILTIN_CONNECTORS: readonly BuiltinConnector[] = [
     mapSession: true,
   },
   ...MENARA_CONNECTORS,
+  {
+    id: "builtin:menara-ookla",
+    name: "Ookla Speed",
+    description:
+      "Real measured download/upload Mbps and latency in Malaysia as an H3 hex layer, per quarter (Ookla Open Data, all providers combined).",
+    url: "http://127.0.0.1:8122/mcp",
+    transport: "http",
+    setupHint:
+      "cd backend && python run_all.py ookla (build a layer first: uv run python -m ookla_mcp.build_layer --type mobile --year 2026 --quarter 3)",
+  },
+  {
+    id: "builtin:menara-dosm",
+    name: "DOSM Statistics",
+    description:
+      "Official Malaysian statistics from DOSM/OpenDOSM: population, household income, poverty, labour force, CPI, GDP, trade, internet access and PriceCatcher prices, by state and district (real data).",
+    url: "http://127.0.0.1:8123/mcp",
+    transport: "http",
+    setupHint:
+      "cd backend && python run_all.py dosm (first run downloads the data; refresh with: uv run python -m dosm_mcp.download)",
+  },
 ];
 
 export function findBuiltinConnector(id: string): BuiltinConnector | undefined {

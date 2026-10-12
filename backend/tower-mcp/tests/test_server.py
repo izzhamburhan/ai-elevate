@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from tower_mcp.server import build_server
 from tower_mcp.source_sqlite import SqliteSourceFactory
@@ -22,7 +23,7 @@ def test_server_registers_its_tools(db_file: Path) -> None:
 
 def test_tool_call_returns_a_synthetic_envelope(db_file: Path) -> None:
     result = asyncio.run(build_server(SqliteSourceFactory(db_file)).call_tool("tower_get_status", {"enodeb_name": "KKRI-0142"}))
-    payload = result[1] if isinstance(result, tuple) else result
+    payload: Any = result.structured_content
     assert payload["synthetic"] is True
     assert payload["data"]["status"] == "DOWN"
     assert payload["evidence"][0]["tool"] == "tower_get_status"

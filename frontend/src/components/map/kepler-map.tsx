@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Provider } from "react-redux";
-import { addDataToMap, mapStyleChange, wrapTo } from "@kepler.gl/actions";
-import { processCsvData } from "@kepler.gl/processors";
+import { mapStyleChange, wrapTo } from "@kepler.gl/actions";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { KeplerGl, keplerLocaleMessages } from "./kepler-panels";
 import { getTheme, useTheme } from "@/lib/theme";
 
+import { ChatFullscreenContext } from "./chat-fullscreen";
+import { ChatMapSync } from "./chat-map-sync";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
-import { BASEMAP_FOR_THEME, MALAYSIA_VIEW, makeKeplerStore } from "./kepler-store";
+import { BASEMAP_FOR_THEME, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { useKeplerBridge } from "./use-kepler-bridge";
 
 const MAP_ID = "workspace";
-const SAMPLE_DATA_URL = "/data/world-cities.csv";
+const SIDE_PANEL_WIDTH = 400;
+/** kepler pads the panel by this on both sides (see `kepler-theme.ts`). */
+const SIDE_PANEL_MARGIN = keplerLightTheme.sidePanel.margin.left;
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -38,9 +41,14 @@ function useElementSize<T extends HTMLElement>() {
 export default function KeplerMap() {
   const [store] = useState(() => makeKeplerStore(getTheme()));
   const [containerRef, { width, height }] = useElementSize<HTMLDivElement>();
-  const loaded = useRef(false);
   const theme = useTheme();
   useKeplerBridge(store, MAP_ID);
+  const [isFullscreen, setFullscreen] = useState(false);
+  const fullscreen = useMemo(() => ({ isFullscreen, setFullscreen }), [isFullscreen]);
+  // fullscreen stretches the side panel over the whole map; kepler animates the width change
+  const sidePanelWidth = isFullscreen
+    ? Math.max(SIDE_PANEL_WIDTH, width - 2 * SIDE_PANEL_MARGIN)
+    : SIDE_PANEL_WIDTH;
 
   // swap the basemap whenever the app theme flips
   useEffect(() => {
@@ -51,87 +59,28 @@ export default function KeplerMap() {
     }
   }, [store, theme]);
 
-  useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-
-    fetch(SAMPLE_DATA_URL)
-      .then((res) => res.text())
-      .then((csv) => {
-        const data = processCsvData(csv);
-        if (!data) throw new Error("Sample CSV could not be parsed");
-        store.dispatch(
-          addDataToMap({
-            datasets: {
-              info: { id: "cities", label: "World cities (sample)" },
-              data,
-            },
-            // keep the Malaysia view instead of fitting to the (world-wide) sample data
-            options: { centerMap: false },
-            config: {
-              version: "v1",
-              config: {
-                mapState: MALAYSIA_VIEW,
-                visState: {
-                  layers: [
-                    {
-                      id: "cities-points",
-                      type: "point",
-                      config: {
-                        dataId: "cities",
-                        label: "Cities",
-                        columns: { lat: "lat", lng: "lng" },
-                        isVisible: true,
-                        color: [124, 92, 255],
-                        visConfig: {
-                          radius: 14,
-                          opacity: 0.8,
-                          filled: true,
-                          outline: false,
-                          radiusRange: [4, 36],
-                          colorRange: {
-                            name: "Lavender",
-                            type: "sequential",
-                            category: "Custom",
-                            colors: ["#e2d6ff", "#bd9fff", "#9b7bff", "#7c5cff", "#5b3fd6", "#3d2a99"],
-                          },
-                        },
-                      },
-                      visualChannels: {
-                        colorField: { name: "population", type: "integer" },
-                        colorScale: "quantile",
-                        sizeField: { name: "population", type: "integer" },
-                        sizeScale: "sqrt",
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          }),
-        );
-      })
-      .catch((err) => console.error("Failed to load sample data", err));
-  }, [store]);
-
   return (
     <div ref={containerRef} className="absolute inset-0">
       {width > 0 && height > 0 ? (
         <Provider store={store}>
           <ChatProvider>
-            <KeplerGl
-              id={MAP_ID}
-              // keep the instance state on unmount: Strict Mode / Fast Refresh remounts would
-              // otherwise delete it and crash kepler's selectors ("reading 'visState'")
-              mint={false}
-              width={width}
-              height={height}
-              theme={theme === "dark" ? keplerDarkTheme : keplerLightTheme}
-              appName="Elevate"
-              version="Map"
-              sidePanelWidth={400}
-              localeMessages={keplerLocaleMessages}
-            />
+            <ChatFullscreenContext.Provider value={fullscreen}>
+              {/* each chat has its own map, starting from the sample data */}
+              <ChatMapSync store={store} mapId={MAP_ID} />
+              <KeplerGl
+                id={MAP_ID}
+                // keep the instance state on unmount: Strict Mode / Fast Refresh remounts would
+                // otherwise delete it and crash kepler's selectors ("reading 'visState'")
+                mint={false}
+                width={width}
+                height={height}
+                theme={theme === "dark" ? keplerDarkTheme : keplerLightTheme}
+                appName="Elevate"
+                version="Map"
+                sidePanelWidth={sidePanelWidth}
+                localeMessages={keplerLocaleMessages}
+              />
+            </ChatFullscreenContext.Provider>
           </ChatProvider>
         </Provider>
       ) : null}

@@ -5,7 +5,7 @@
  * `id` is what the picker sends to the backend as `config.modelName`; the part before the
  * slash picks the provider in `lib/ai/providers.ts`.
  */
-export type ChatModelProvider = "deepseek" | "openai" | "local";
+export type ChatModelProvider = "deepseek" | "openai" | "gigx" | "local";
 
 export type ChatModel = {
   id: string;
@@ -37,6 +37,16 @@ export const CHAT_MODELS: readonly ChatModel[] = [
     description: "OpenAI API · balanced",
     provider: "openai",
     contextWindow: 1_050_000,
+  },
+  {
+    // served by vLLM as google/gemma-4-E2B-it; the model's native window is 128k, but the GigX
+    // deployment enforces max_model_len 16384 and answers anything past it with an opaque 400.
+    // If the deployment changes, override with GIGX_CONTEXT_WINDOW on the server.
+    id: "gigx/gemma-4-e2b-it",
+    name: "Gemma 4 E2B",
+    description: "GigX (nexa-dev) · google/gemma-4-E2B-it",
+    provider: "gigx",
+    contextWindow: 16_384,
   },
   {
     // the actual local model tag comes from LOCAL_LLM_MODEL on the server; the server may

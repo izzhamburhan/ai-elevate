@@ -1,0 +1,2 @@
+# Downloaded DOSM parquet files and the DuckDB built from them (python -m dosm_mcp.download)
+data/

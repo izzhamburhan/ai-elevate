@@ -61,7 +61,9 @@ const TOOLS: {
     title: "Get map state",
     description:
       "Describe the kepler.gl map: datasets (id, label, row count, fields with types), layers, filters, " +
-      "camera view, basemap and split view. Call this first to learn dataset ids, layer ids and field names.",
+      "camera view, basemap and split view. Call it before changing the map, to learn dataset ids, layer ids " +
+      "and field names. It only shows data already loaded on the map; to look up new data (e.g. network " +
+      "sites or tickets), use the other connectors' search tools.",
     inputSchema: {},
     readOnly: true,
   },
@@ -72,7 +74,9 @@ const TOOLS: {
     description: "Fields of a dataset plus a sample of its rows, to see what the values look like.",
     inputSchema: {
       dataId: z.string().describe("Dataset id from kepler_get_map_state."),
-      limit: z.number().int().min(1).max(50).default(5).describe("Rows to return."),
+      // no min/max: small models overshoot and a validation error wastes the step, so the
+      // command clamps to 1..50 instead
+      limit: z.number().int().default(5).describe("Rows to return, 1-50; larger values are capped at 50."),
     },
     readOnly: true,
   },

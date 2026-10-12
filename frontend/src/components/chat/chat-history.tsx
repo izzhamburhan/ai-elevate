@@ -18,7 +18,8 @@ import { createAssistantStream } from "assistant-stream";
 /**
  * Chat history saved in this browser's IndexedDB (tool results such as map data quickly outgrow
  * localStorage's ~5 MB). Plugs into assistant-ui as a thread-list adapter: the list of chats plus,
- * per chat, a history adapter that stores the AI SDK messages exactly as the runtime hands them over.
+ * per chat, a history adapter that stores the AI SDK messages exactly as the runtime hands them over,
+ * plus a snapshot of the map that chat built.
  * If storage is unavailable (e.g. a locked-down private window) chats still work, just unsaved.
  */
 
@@ -29,6 +30,7 @@ const DB_NAME = "elevate-chat";
 const STORE = "kv";
 const THREADS_KEY = "threads";
 const messagesKey = (remoteId: string) => `messages:${remoteId}`;
+const mapKey = (remoteId: string) => `map:${remoteId}`;
 
 type StoredThread = {
   remoteId: string;
@@ -127,6 +129,32 @@ function removeEntries(remoteId: string, ids: ReadonlySet<string>) {
 }
 
 const warnUnsaved = (error: unknown) => console.warn("[chat-history] Chat history is not being saved:", error);
+
+// ---------------------------------------------------------------------------------------------
+// Per-chat map: the kepler.gl datasets + config the chat left on the map (see chat-map-sync.ts)
+
+export type MapSnapshot = {
+  /** `KeplerGlSchema.getDatasetToSave` output. */
+  datasets: unknown;
+  /** `KeplerGlSchema.getConfigToSave` output. */
+  config: unknown;
+  savedAt: number;
+};
+
+export function loadMapSnapshot(remoteId: string) {
+  return kv.get<MapSnapshot>(mapKey(remoteId)).catch((error) => {
+    warnUnsaved(error);
+    return undefined;
+  });
+}
+
+export function saveMapSnapshot(remoteId: string, snapshot: MapSnapshot) {
+  return serial(async () => {
+    const threads = await readThreads();
+    if (!threads.some((t) => t.remoteId === remoteId)) return; // deleted while this write was queued
+    await kv.set(mapKey(remoteId), toPlain(snapshot));
+  }).catch(warnUnsaved);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Per-thread message history
@@ -264,6 +292,7 @@ export const chatThreadListAdapter: RemoteThreadListAdapter = {
         threads.filter((t) => t.remoteId !== remoteId),
       );
       await kv.remove(messagesKey(remoteId));
+      await kv.remove(mapKey(remoteId));
     }).catch(warnUnsaved),
 
   // Titles come from the first user message. The runtime expects a generation to save its own

@@ -223,7 +223,7 @@ def test_the_server_runs_on_the_http_source_and_says_so(db_file: Path) -> None:
     server = build_server(http_factory(fake_api(db_file)))
     assert "live tower API" in (server.instructions or "")
     result = asyncio.run(server.call_tool("tower_get_status", {"enodeb_name": "KKRI-0142"}))
-    payload: dict[str, Any] = result[1] if isinstance(result, tuple) else result
+    payload: Any = result.structured_content
     assert payload["synthetic"] is False and payload["data"]["status"] == "DOWN"
 
 

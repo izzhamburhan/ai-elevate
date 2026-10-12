@@ -3,12 +3,13 @@
 Usage (from backend/):
     python run_all.py                  # netops + all Menara MCPs, Ctrl+C stops them
     python run_all.py --frontend       # ... plus the frontend (npm run dev, http://localhost:3000)
+    python run_all.py --no-search      # list every tool instead of <name>_search_tools + <name>_call_tool
     python run_all.py tower ticket     # only these (name without "-mcp"; "netops" is allowed)
     python run_all.py list             # names and ports
 
 Menara servers are found by scanning */src/*/server.py for DEFAULT_PORT, so a new MCP shows up without
-changes. Missing seed data is created on first run. netops-mcp keeps its own environment (Python 3.12, fastmcp) and is started from its own folder.
-Ports: frontend 3000, netops 8000, Menara MCPs 8101-8121.
+changes. Missing seed data is created on first run. Every server starts with --search (BM25 tool search) unless --no-search is given. netops-mcp keeps its own environment (Python 3.12, fastmcp) and is started from its own folder.
+Ports: frontend 3000, netops 8000, Menara MCPs 8101-8123.
 """
 
 from __future__ import annotations
@@ -51,6 +52,9 @@ def seed_if_missing(selected: list[str]) -> None:
     if any(n != "netops" for n in selected) and not (ROOT / "data" / "menara.db").exists():
         print("seeding Menara DB ...")
         subprocess.run(["uv", "run", "--no-sync", "python", "-m", "menara_core.seed.cli"], cwd=ROOT, check=True)
+    if "dosm" in selected and not (ROOT / "dosm-mcp" / "data" / "dosm.duckdb").exists():
+        print("downloading DOSM open data (~80 MB, ~1 min) ...")
+        subprocess.run(["uv", "run", "--no-sync", "python", "-m", "dosm_mcp.download"], cwd=ROOT, check=True)
     if "netops" in selected:
         data = NETOPS / "data"
         steps = [
@@ -78,7 +82,8 @@ def main() -> int:
     menara = discover()
     args = sys.argv[1:]
     with_frontend = "--frontend" in args
-    names = [a for a in args if a != "--frontend"]
+    search = [] if "--no-search" in args else ["--search"]
+    names = [a for a in args if a not in ("--frontend", "--no-search")]
 
     ports = {"netops": NETOPS_PORT, **{n: p for n, (_, p) in menara.items()}}
     if names == ["list"]:
@@ -113,11 +118,11 @@ def main() -> int:
     try:
         for name in selected:
             if name == "netops":
-                cmd = ["uv", "run", "--no-sync", "--python", PY, "python", "-m", "netops_mcp.server", "--http"]
+                cmd = ["uv", "run", "--no-sync", "--python", PY, "python", "-m", "netops_mcp.server", "--http", *search]
                 procs[name] = subprocess.Popen(cmd, cwd=NETOPS)
             else:
                 module, port = menara[name]
-                cmd = ["uv", "run", "--no-sync", "python", "-m", module, "--transport", "streamable-http", "--port", str(port)]
+                cmd = ["uv", "run", "--no-sync", "python", "-m", module, "--transport", "streamable-http", "--port", str(port), *search]
                 procs[name] = subprocess.Popen(cmd, cwd=ROOT)
             print(f"started {name:<12} http://127.0.0.1:{ports[name]}/mcp")
         if with_frontend:

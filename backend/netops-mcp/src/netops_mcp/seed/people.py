@@ -4,8 +4,9 @@ upstream tables; plus VIP tickets and the advisory / ML reference tables."""
 
 import datetime as dt
 import math
+import random
 
-from netops_mcp import geo
+from netops_mcp import config, geo
 from netops_mcp.seed import reference as R
 from netops_mcp.seed.util import bulk_insert, clamp, iso, rsrp_at, weighted
 
@@ -67,7 +68,7 @@ def build_subscribers(ctx):
     region_clusters = {}
     for c in clusters:
         region_clusters.setdefault(c["region"], []).append(c)
-    outage_sites = [ctx.site_by_id[s] for s in ctx.open_outage_sites if s in ctx.site_by_id]
+    outage_sites = [ctx.site_by_id[s] for s in sorted(ctx.open_outage_sites) if s in ctx.site_by_id]
     congested_sites = [ctx.site_by_id[r[0]] for r in ctx.con.execute(
         "SELECT DISTINCT Site_ID FROM Site4G WHERE Status = 'Congested'").fetchall()]
 
@@ -400,10 +401,15 @@ def build_vip_tickets(ctx):
     start = dt.datetime(ref_dt.year - 1, 6, 1)
     span = (ref_dt - start).total_seconds()
     times = sorted(start + dt.timedelta(seconds=span * (rng.random() ** 0.7)) for _ in range(220))
+    # hotspot tickets (seed.hotspots) draw from their own RNG on a pinned site, so the
+    # nationwide tickets keep their values; all are numbered together in time order
+    hot_rng = random.Random(f"{config.SEED}-hotspots-vip")
+    plan = sorted([(t, rng, None) for t in times] + [(t, hot_rng, s) for t, s in ctx.hotspot_vip],
+                  key=lambda p: p[0])
     tickets, esc_rows, fb_rows, att_rows, mail_rows = [], [], [], [], []
     running = 300
     fid = eid = aid = 0
-    for tid, complained in enumerate(times, start=1):
+    for tid, (complained, rng, pinned) in enumerate(plan, start=1):
         complained = complained.replace(second=0, microsecond=0)
         running += 1
         ctt = "VCTT" if rng.random() < 0.7 else "ECTT"
@@ -411,7 +417,7 @@ def build_vip_tickets(ctx):
         age_days = (ref_dt - complained).days
         status = weighted(rng, R.TT_STATUS) if age_days < 21 else weighted(rng, [("Closed", 0.85), ("Completed PSC", 0.15)])
         problem, rc1, rc2 = rng.choice(R.VIP_PROBLEMS)
-        site = rng.choice(ctx.sites4g)
+        site = pinned or rng.choice(ctx.sites4g)
         lat, lng = geo.offset(site["lat"], site["lng"], rng.uniform(0, 360), rng.uniform(0.05, 0.8))
         escalated = complained + dt.timedelta(hours=rng.uniform(0.2, 5))
         resolved = escalated + dt.timedelta(hours=rng.uniform(2, 96)) if status in ("Closed", "Completed PSC") else None

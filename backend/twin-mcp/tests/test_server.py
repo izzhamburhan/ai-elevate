@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from twin_mcp.server import build_server
 
@@ -14,6 +15,6 @@ def test_server_registers_its_tools(db_file: Path) -> None:
 def test_tool_call_returns_a_synthetic_envelope(db_file: Path) -> None:
     changes = [{"enodeb_name": "KKRI-0143", "tilt_delta_deg": 4.0}]
     result = asyncio.run(build_server(db_file).call_tool("twin_simulate_tilt", {"changes": changes}))
-    payload = result[1] if isinstance(result, tuple) else result
+    payload: Any = result.structured_content
     assert payload["synthetic"] is True
     assert payload["data"]["tilted"][0]["predicted_prb"] == 63.0

@@ -16,7 +16,7 @@ from importlib import resources
 import duckdb
 
 from netops_mcp import config
-from netops_mcp.seed import network, people
+from netops_mcp.seed import hotspots, network, people
 from netops_mcp.seed.util import bulk_insert
 
 
@@ -41,6 +41,8 @@ class Ctx:
         self.open_outage_sites: set = set()
         self.active_pm_sites: set = set()
         self.subscribers: list = []
+        self.hotspot_thd: list = []
+        self.hotspot_vip: list = []
 
 
 def main() -> None:
@@ -74,6 +76,7 @@ def main() -> None:
         ("EMS, HWC and handover", network.build_ems),
         ("NTT (4G + 5G)", network.build_ntt),
         ("planned maintenance", network.build_plan_maintenance),
+        ("Cyberjaya / KL demo hotspots", hotspots.build_hotspots),
         ("congested cells", network.build_congested_cells),
         ("site status", network.update_site_status),
         ("coverage / congestion layers", network.build_coverage_layers),

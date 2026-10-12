@@ -12,6 +12,7 @@ dev = [
     "mypy>=1.16",
     "types-PyYAML>=6.0",
     "care-mcp",
+    "dosm-mcp",
     "drone-mcp",
     "energy-mcp",
     "enterprise-mcp",
@@ -21,6 +22,7 @@ dev = [
     "flood-mcp",
     "grid-mcp",
     "ontology-mcp",
+    "ookla-mcp",
     "policy-mcp",
     "ran-mcp",
     "scam-mcp",
@@ -44,6 +46,7 @@ exclude = ["netops-mcp"]
 [tool.uv.sources]
 menara-core = { workspace = true }
 care-mcp = { workspace = true }
+dosm-mcp = { workspace = true }
 drone-mcp = { workspace = true }
 energy-mcp = { workspace = true }
 enterprise-mcp = { workspace = true }
@@ -53,6 +56,7 @@ field-mcp = { workspace = true }
 flood-mcp = { workspace = true }
 grid-mcp = { workspace = true }
 ontology-mcp = { workspace = true }
+ookla-mcp = { workspace = true }
 policy-mcp = { workspace = true }
 ran-mcp = { workspace = true }
 scam-mcp = { workspace = true }

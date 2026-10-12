@@ -10,11 +10,12 @@ import argparse
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from menara_core import settings
 from menara_core.envelope import Envelope
+from menara_core.mcp_server import add_tool_search, serve
 
 from tower_mcp import tools
 from tower_mcp.source import SourceFactory, TowerSource
@@ -32,9 +33,11 @@ SYNTHETIC_NOTE = "ALL DATA IS SYNTHETIC."
 LIVE_NOTE = "Data comes from a live tower API; responses are marked synthetic: false."
 
 
-def build_server(open_source: SourceFactory, *, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> FastMCP:
+def build_server(open_source: SourceFactory, *, search: bool = False) -> FastMCP:
     note = SYNTHETIC_NOTE if open_source.synthetic else LIVE_NOTE
-    mcp = FastMCP(NAME, instructions=f"{COMMON} {note}", host=host, port=port)
+    mcp = FastMCP(NAME, instructions=f"{COMMON} {note}")
+    if search:
+        add_tool_search(mcp, NAME)
 
     def run(call: Callable[[TowerSource], Envelope[Any]]) -> dict[str, Any]:
         with open_source() as source:
@@ -88,6 +91,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--search", action="store_true", help="collapse the tool list into BM25 search + call tools")
     parser.add_argument(
         "--source",
         choices=["sqlite", "http"],
@@ -109,8 +113,7 @@ def main(argv: list[str] | None = None) -> None:
         factory = HttpSourceFactory(args.api_url, os.environ.get("MENARA_TOWER_API_TOKEN"))
     else:
         factory = SqliteSourceFactory(args.db or settings.db_path())
-    transport: Literal["stdio", "streamable-http"] = args.transport
-    build_server(factory, host=args.host, port=args.port).run(transport=transport)
+    serve(build_server(factory, search=args.search), args.transport, args.host, args.port)
 
 
 if __name__ == "__main__":

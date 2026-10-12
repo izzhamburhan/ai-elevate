@@ -229,7 +229,7 @@ export function runKeplerCommand(
     case "get_dataset": {
       const dataset = getDataset(args.dataId);
       const total = dataset.dataContainer.numRows();
-      const limit = Math.min(Number(args.limit ?? 5), total);
+      const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 50, total);
       const rows = Array.from({ length: limit }, (_, i) => {
         const values = dataset.dataContainer.rowAsArray(i);
         return Object.fromEntries(dataset.fields.map((f, j) => [f.name, compact(values[j])]));
