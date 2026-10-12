@@ -212,3 +212,20 @@ Independent resulting-diff review confirmed that Menara backend/HITL workflows, 
 | No publishing or license assignment | PASS | Local commit only; no push, PR, remote merge, force push, or root/service license added |
 
 The branch is technically ready for a GitHub pull request as the documented historical-replay hackathon MVP, pending explicit publication authorization. Operational accuracy, fresh live observations, full browser air-gap, AMD64 execution, application-license approval and full redistribution audit retain their previously documented **NOT VERIFIED** limits. Mandatory human-approval functionality is preserved from upstream; unrelated Menara services were not reset or started just for this weather verification.
+
+## Authorized publication qualification — 12 October 2026
+
+The owner subsequently authorized pushing the feature branch, opening a pull request and merging only when GitHub's required checks/reviews permit it. Authentication was verified as `devsecops-xaff`, with repository write permission. A new fetch found `origin/main` at `ef63f32a31e7940ea1617a319dc501387038d6d9`; its two-file Menara self-heal update merged cleanly. The resulting Menara files match upstream exactly: default healing selects a real NetOps outage; the flood story requires an explicit tower name. Weather ML functionality and the previous landing/provider conflict resolution are retained. This section records pre-publication evidence; publication and merge outcomes belong to the resulting pull request.
+
+| Criterion | Result | Actual evidence |
+|---|---|---|
+| Latest upstream preserved | PASS | `ef63f32` integrated; no backend/NetOps, marketing/workspace or Menara differences from that upstream snapshot |
+| Fresh install and all 54 tests | PASS | Isolated Git-index snapshot: `npm ci` installed 1516 packages and applied the existing patch; 46 Docker backend tests passed in 5.94s; eight frontend tests passed |
+| Frontend lint and production build/typecheck | PASS | Full ESLint and Next build passed; 19 generated route entries include Weather, Menara, marketing and `/workspace` |
+| Actual Chronos / all six MCP tools | PASS | Both targets at 6/12/24h; status, metrics, site prediction and GeoJSON invocation against the running Docker service |
+| Deterministic replay and synthetic labels | PASS | Repeated semantic outputs match; 132 valid points include three weather locations and 129 explicitly synthetic telecom sites |
+| Merged frontend / Kepler bridge | PASS | Actual `/api/weather` and AI SDK inspection passed; 24h overlay rendered through the Weather panel; hide/restore preserved existing cities/local outline datasets and visibility |
+| Existing local agent | PASS | Merged `/api/chat` used the existing local Qwen provider to call `predict_rainfall`, receive actual Chronos results and complete without an error event |
+| Docker and unrelated runtime preservation | PASS | Existing Weather container remained healthy on 127.0.0.1:8002; Hermes/XSSHunter IDs unchanged; SSH listener retained on 8001 |
+
+No new forecasting claims or licensing approvals follow from these checks. All previously documented live-data, rainfall-calibration, full browser air-gap, AMD64 and application/full-redistribution licensing limitations remain unchanged. No application license was added. GitHub reports `main` as unprotected with no active branch rules and no configured Actions runs; pull-request mergeability, checks and reviews must still be inspected immediately before merging. No branch-protection bypass is authorized.

@@ -11,7 +11,7 @@ export const STAGES = ["detect", "diagnose", "simulate", "approve", "apply", "ve
 export type Stage = (typeof STAGES)[number];
 
 export const THRESHOLD_PRB = 85;
-const FLOOD_TOWER = "KKRI-0142"; // the flood story's tower, healed when no tower is named and it is still down
+const FLOOD_TOWER = "KKRI-0142"; // the flood story's tower, healed only when asked for by name
 const MAX_WINDOW_MIN = 1440; // tower_get_kpi's limit
 const LEAD_MIN = 240;
 const MAX_POINTS = 200;
@@ -80,13 +80,16 @@ export function clearRun() {
   holder.__elevateHealRun = undefined;
 }
 
-/** The flood tower while it is still faulty, otherwise the faulty tower with the most severe active alarm. */
+/**
+ * The real outage with the most severe active alarm (the NetOps faults). The flood story's cluster is left out:
+ * it is healed only when asked for by name (KKRI-0142).
+ */
 async function pickTarget(): Promise<string> {
-  const flood = await safe("tower_get_status", { enodeb_name: FLOOD_TOWER });
-  if (flood.status && flood.status !== "UP") return FLOOD_TOWER;
-  const alarms = ((await safe("tower_get_alarms", { active_only: true, limit: 50 })).alarms as { enodeb_name: string }[] | undefined) ?? [];
-  if (!alarms.length) throw new Error("No tower has an active alarm right now: there is nothing to heal.");
-  return alarms[0].enodeb_name; // the server sorts by severity
+  const story = `${FLOOD_TOWER.split("-")[0]}-`;
+  const alarms = ((await safe("tower_get_alarms", { active_only: true, limit: 200 })).alarms as { enodeb_name: string }[] | undefined) ?? [];
+  const real = alarms.find((a) => !a.enodeb_name.startsWith(story)); // the server sorts by severity
+  if (!real) throw new Error("No tower outside the flood demo has an active alarm right now: there is nothing to heal.");
+  return real.enodeb_name;
 }
 
 // ---------------------------------------------------------------- the loop
