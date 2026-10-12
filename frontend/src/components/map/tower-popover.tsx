@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useStore } from "react-redux";
 import { toggleSidePanel, wrapTo } from "@kepler.gl/actions";
 import { MapPopoverContentFactory, MapPopoverFactory } from "@kepler.gl/components";
@@ -9,6 +9,7 @@ import { useAui, useAuiState } from "@assistant-ui/react";
 import { Check, Loader2, MessageSquarePlus, MousePointerClick, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { focusTower } from "@/lib/hermes/map-focus";
 import { isTowerName, TOWER_MEDIA_TYPE, towerAttachment, towerContext, type TowerRow } from "@/lib/menara/tower-context";
 
 import { MAP_ID } from "./kepler-store";
@@ -33,6 +34,27 @@ function towerOf(hover: LayerHoverProp | null): TowerRow | null {
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   return { name, town: str(value("town")), state: str(value("state")), status: str(value("status"))?.toUpperCase(), lat: num(value("lat")), lng: num(value("lng")) };
+}
+
+/** A pinned point that the Agents tab can show evidence for: a tower, or a site on an agent or opportunity layer. */
+function siteOf(hover: LayerHoverProp | null): { name: string; lat: number; lng: number } | null {
+  if (!hover?.data || !hover.fields?.length) return null;
+  const value = (name: string) => {
+    const i = hover.fields.findIndex((f) => f.name === name);
+    return i < 0 ? undefined : getLayerHoverPropValue(hover.data, i);
+  };
+  const name = ["tower", "enodeb_name", "site_id", "id", "name"].map(value).find((v) => typeof v === "string" && v);
+  const lat = [value("lat"), value("latitude")].find((v) => typeof v === "number");
+  const lng = [value("lng"), value("longitude")].find((v) => typeof v === "number");
+  return typeof name === "string" && typeof lat === "number" && typeof lng === "number" ? { name, lat, lng } : null;
+}
+
+/** Clicking (pinning) a point tells the Agents tab, which shows the run's evidence near it. */
+function FocusOnPin({ hover }: { hover: LayerHoverProp | null }) {
+  const { frozen } = useContext(PopoverContext);
+  const site = frozen ? siteOf(hover) : null;
+  useEffect(() => { if (site) focusTower(site); }, [site?.name, site?.lat, site?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
 }
 
 /** Opens the chat tab when another tab, or no panel, is showing. */
@@ -111,6 +133,7 @@ function ElevateMapPopoverContentFactory(...deps: Parameters<typeof MapPopoverCo
     return (
       <>
         <MapPopoverContent {...props} />
+        <FocusOnPin hover={props.layerHoverProp} />
         {tower ? <TowerActions tower={tower} /> : null}
       </>
     );
