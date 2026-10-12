@@ -137,11 +137,12 @@ export const menaraToolkit = defineToolkit({
       "tower's real status, alarm, power and flood data and picks the fix: tilt overloaded neighbours, soft-reset a hung cell, send a " +
       "drone or a field crew. Use it when the user asks to heal, fix or self-heal a tower, an outage, the flood incident or the faulty " +
       "towers. Give `tower` as the eNodeB name (e.g. KLCC-4721) when the user names one or after you found it (tower_get_alarms lists the " +
-      "towers with active alarms); omit it to heal the most urgent faulty tower (the flood tower KKRI-0142 while it is down). Human in the " +
+      "towers with active alarms); for the flood incident or the flood demo give tower KKRI-0142; otherwise omit it to heal the most " +
+      "urgent real outage. Human in the " +
       "loop: every action waits for the user to approve or reject in the card; it cannot be skipped. The card shows every step, so do " +
       "not describe them yourself; add at most one sentence and remind the user to approve in the card.",
     parameters: z.object({
-      tower: z.string().optional().describe("eNodeB name of the faulty tower, e.g. KLCC-4721. Omit for the most urgent one."),
+      tower: z.string().optional().describe("eNodeB name of the faulty tower, e.g. KLCC-4721; KKRI-0142 for the flood incident. Omit for the most urgent real outage."),
     }),
     execute: async ({ tower }) => {
       const started = await post<{ runId: string; tower: string; existing: boolean }>("/api/menara/heal", { tower });
