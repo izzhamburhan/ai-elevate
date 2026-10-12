@@ -173,18 +173,18 @@ export function DecisionTimeMachine({ store, verdicts, disabled, onExplain }: {
               <div key={s.strategy_id} className="rounded-md border p-2">
                 <p className="flex items-center gap-1.5 font-semibold"><span className="size-2 rounded-full" style={{ background: COLORS[s.strategy_id] }} />{s.name}{simulation.data.recommendation.strategy_id === s.strategy_id ? <span className="rounded bg-green-500/15 px-1 text-[10px] text-green-700 dark:text-green-300">computed pick</span> : null}</p>
                 <p className="text-muted-foreground">{s.summary}</p>
-                <p>Spend {rm(s.expected_spend_rm)}{s.budget_not_deployed_rm > 0 ? ` (${rm(s.budget_not_deployed_rm)} ${s.strategy_id === "phased_pilot" ? "held back on average" : "not deployable: demand or capacity limit"})` : ""} · customers ~{s.customers_acquired.p50} · mean {rm(s.net_contribution_24m_rm.mean)} ({rm(s.net_contribution_24m_rm.p10)} to {rm(s.net_contribution_24m_rm.p90)})</p>
+                <p>Simulated: spend {rm(s.expected_spend_rm)}{s.budget_not_deployed_rm > 0 ? ` (${rm(s.budget_not_deployed_rm)} ${s.strategy_id === "phased_pilot" ? "held back on average" : "not deployable: demand or capacity limit"})` : ""} · customers ~{s.customers_acquired.p50} · mean {rm(s.net_contribution_24m_rm.mean)} ({rm(s.net_contribution_24m_rm.p10)} to {rm(s.net_contribution_24m_rm.p90)})</p>
                 <p>Loss probability {pct(s.probability_of_loss_24m)} · payback {s.payback_month_p50 ? `month ${s.payback_month_p50}` : "not within 24 months"}{delta ? ` · vs baseline ${delta.mean_change_rm >= 0 ? "+" : ""}${rm(delta.mean_change_rm)}, loss ${delta.loss_probability_change >= 0 ? "+" : ""}${pct(delta.loss_probability_change)}` : ""}</p>
               </div>
             );
           })}
         </div>
-        <p className="font-medium">Median cumulative contribution, months 0–24</p>
+        <p className="font-medium">Median simulated cumulative contribution, months 0–24</p>
         <CumulativeChart simulation={simulation} />
         <div role="status" aria-label="Computed recommendation" className="rounded-md border border-green-500/40 bg-green-500/10 p-2">
           <p className="font-semibold">Computed recommendation: {simulation.data.recommendation.name}</p>
           <p>{simulation.data.recommendation.rule}</p>
-          <p className="text-muted-foreground">Deterministic rule over the simulated numbers. The AI explanation can only explain it, never change it.</p>
+          <p className="text-muted-foreground">Deterministic rule over the simulated numbers. The AI explanation can only explain it, never change it. These are simulated outcomes from synthetic assumptions, not real financial results.</p>
         </div>
         <Button type="button" className="w-full" disabled={disabled || stale} onClick={() => void onExplain(explainPrompt(inputs))}><Sparkles />Explain with AI (~2 min)</Button>
         <p className="text-muted-foreground">The Business Hypothesis agent explains this exact scenario; its numbers and recommendation come from the simulation above.</p>
