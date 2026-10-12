@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import random
 import sqlite3
+from contextlib import ExitStack
 from pathlib import Path
 
 from menara_core.scenario import Scenario
+from menara_core.seed import netops
 from menara_core.seed import towers as gen
 from menara_core.seed.actions import build_actions
 from menara_core.seed.care import build_care
@@ -49,11 +51,20 @@ def _insert_towers(conn: sqlite3.Connection, rows: list[gen.TowerRow]) -> None:
 
 
 def _baseline_tower(
-    conn: sqlite3.Connection, rng: random.Random, row: gen.TowerRow, alarm_seq: int
+    conn: sqlite3.Connection,
+    rng: random.Random,
+    row: gen.TowerRow,
+    alarm_seq: int,
+    forced: netops.Forced | None = None,
 ) -> int:
-    """Most towers are UP; a few are DEGRADED or DOWN with a matching alarm. Returns next alarm id."""
-    roll = rng.random()
-    status = "UP" if roll < 0.95 else ("DEGRADED" if roll < 0.985 else "DOWN")
+    """Most towers are UP; a few are DEGRADED or DOWN with a matching alarm. Returns next alarm id.
+
+    `forced` (from NetOps) replaces the random status and KPI baseline."""
+    if forced is None:
+        roll = rng.random()
+        status = "UP" if roll < 0.95 else ("DEGRADED" if roll < 0.985 else "DOWN")
+    else:
+        status = forced.status
     conn.execute(
         "INSERT INTO tower_state VALUES (?, ?, 'UP', 100, 1)", (row.enodeb_name, BASELINE_T_MIN)
     )
@@ -73,7 +84,7 @@ def _baseline_tower(
             (f"ALM-{alarm_seq:06d}", row.enodeb_name, code, severity, message, raised),
         )
         alarm_seq += 1
-    base = (rng.uniform(25, 70), rng.uniform(0.3, 1.2), rng.uniform(35, 90))
+    base = forced.base if forced else (rng.uniform(25, 70), rng.uniform(0.3, 1.2), rng.uniform(35, 90))
     for t_min in range(gen.KPI_HOURLY_START, gen.KPI_END_MIN + 1, 60):
         if down_from is not None and t_min >= down_from:
             sample = (0.0, 0.0, 0.0)
@@ -116,16 +127,28 @@ def build(
     *,
     towers: int = DEFAULT_TOWER_COUNT,
     seed: int = DEFAULT_SEED,
+    netops_db: Path | None = None,
 ) -> dict[str, int]:
-    """Create a fresh database. Returns row counts for the seed summary."""
+    """Create a fresh database. Returns row counts for the seed summary.
+
+    With `netops_db`, towers, cells, KPI baselines and status come from that NetOps DuckDB file and the
+    scripted scenario is re-anchored on real NetOps sites; `towers` is then ignored."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     _remove_existing(db_path)
     rng = random.Random(seed)
 
-    baseline = gen.generate_towers(rng, towers)
-    cluster = gen.cluster_towers(scenario, rng)
+    link = netops.load(netops_db, rng, scenario) if netops_db else None
+    if link:
+        scenario = link.scenario
+        baseline, cluster = link.towers, link.cluster
+    else:
+        baseline = gen.generate_towers(rng, towers)
+        cluster = gen.cluster_towers(scenario, rng)
     everything = [*baseline, *cluster]
 
+    stack = ExitStack()
+    if link:
+        stack.enter_context(netops.use_towns(link))
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -137,16 +160,21 @@ def build(
                 ("scenario", scenario.name),
                 ("scenario_start", scenario.start),
                 ("synthetic", "true"),
+                *([("netops_db", netops_db.name), ("netops_linked", "true")] if link and netops_db else []),
             ],
         )
+        if link:
+            conn.executemany("INSERT INTO netops_link VALUES (?, ?, ?, ?)", link.links)
         conn.execute("INSERT INTO scenario_state VALUES (1, ?)", (scenario.default_now_min,))
         _insert_towers(conn, everything)
         for row in everything:
-            conn.executemany("INSERT INTO cell VALUES (?, ?, ?, ?, ?)", gen.cells_for(rng, row))
+            conn.executemany(
+                "INSERT INTO cell VALUES (?, ?, ?, ?, ?)", link.cells[row.enodeb_name] if link else gen.cells_for(rng, row)
+            )
         conn.executemany("INSERT INTO tower_neighbour VALUES (?, ?, ?)", gen.neighbours(everything))
         alarm_seq = 1
         for row in baseline:
-            alarm_seq = _baseline_tower(conn, rng, row, alarm_seq)
+            alarm_seq = _baseline_tower(conn, rng, row, alarm_seq, link.forced[row.enodeb_name] if link else None)
         _scripted_cluster(conn, rng, scenario)
         build_people(conn, rng, scenario, everything)
         build_context(conn, rng, scenario, everything)
@@ -167,7 +195,7 @@ def build(
         counts = {
             table: int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
             for table in (
-                "tower", "cell", "tower_neighbour", "tower_state", "tower_kpi", "tower_alarm",
+                "tower", "netops_link", "cell", "tower_neighbour", "tower_state", "tower_kpi", "tower_alarm",
                 "subscriber", "subscriber_state", "subscriber_experience", "subscriber_cell_visit", "ticket",
                 "weather_station", "weather_obs", "grid_feeder", "grid_feeder_tower", "grid_feeder_state",
                 "flood_gauge", "flood_reading", "flood_extent", "critical_site", "tower_subscribers",
@@ -177,4 +205,5 @@ def build(
         }
     finally:
         conn.close()
+        stack.close()
     return counts

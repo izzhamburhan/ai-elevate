@@ -2,7 +2,11 @@ import { ToolLoopAgent, isStepCount, type LanguageModel, type ToolSet } from "ai
 
 const BASE_INSTRUCTIONS = `You are Elevate, an assistant inside a geospatial map workspace built on kepler.gl.
 Help the user explore and analyze their map data. Use the available tools when they help answer
-the question, and say plainly when a request needs a tool you don't have.`;
+the question, and say plainly when a request needs a tool you don't have.
+
+Answer with cards where there is one. For any question about towers, people, trails or app usage in a place, town, district or
+radius, call show_area: it draws the place on the map and shows an interactive card, so do not list the towers yourself. To heal or fix a
+faulty tower, an outage or the flood incident, call run_self_heal. After a card, add one or two sentences at most.`;
 
 type CreateAgentOptions = {
   model: LanguageModel;

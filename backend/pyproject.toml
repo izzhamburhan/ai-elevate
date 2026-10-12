@@ -12,6 +12,7 @@ dev = [
     "mypy>=1.16",
     "types-PyYAML>=6.0",
     "care-mcp",
+    "demo-mcp",
     "dosm-mcp",
     "drone-mcp",
     "energy-mcp",
@@ -46,6 +47,7 @@ exclude = ["netops-mcp"]
 [tool.uv.sources]
 menara-core = { workspace = true }
 care-mcp = { workspace = true }
+demo-mcp = { workspace = true }
 dosm-mcp = { workspace = true }
 drone-mcp = { workspace = true }
 energy-mcp = { workspace = true }

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
-from menara_core import clock, kpi_overlay
+from menara_core import clock, kpi_overlay, repairs
 from menara_core.db import connect
 
 from tower_mcp.models import Alarm, KpiPoint, TowerPin, TowerStatus
@@ -76,9 +76,8 @@ class SqliteTowerSource:
         ).fetchone()
         if row is None:
             return None
-        return StatusRecord(
-            status=cast(TowerStatus, row["status"]), battery_pct=row["battery_pct"], mains_ok=bool(row["mains_ok"])
-        )
+        status = repairs.status(self._conn, enodeb_name, self._now(), row["status"])
+        return StatusRecord(status=cast(TowerStatus, status), battery_pct=row["battery_pct"], mains_ok=bool(row["mains_ok"]))
 
     def get_neighbours(self, enodeb_name: str) -> list[NeighbourRecord]:
         return [
@@ -105,32 +104,35 @@ class SqliteTowerSource:
         return [self._point(r) for r in rows]
 
     def count_active_alarms(self, enodeb_name: str) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) FROM tower_alarm WHERE enodeb_name = :name AND raised_min <= :now "
+        now = self._now()
+        rows = self._conn.execute(
+            "SELECT raised_min FROM tower_alarm WHERE enodeb_name = :name AND raised_min <= :now "
             "AND (cleared_min IS NULL OR cleared_min > :now)",
-            {"name": enodeb_name, "now": self._now()},
-        ).fetchone()
-        return int(row[0])
+            {"name": enodeb_name, "now": now},
+        ).fetchall()
+        return sum(1 for r in rows if repairs.alarm_cleared_min(self._conn, enodeb_name, now, r["raised_min"]) is None)
 
     def list_towers(
         self, min_lat: float, min_lng: float, max_lat: float, max_lng: float, status: str | None, limit: int
     ) -> list[TowerPin]:
+        now = self._now()
         rows = self._conn.execute(
-            "SELECT * FROM (SELECT t.enodeb_name, t.site_id, t.town, t.state, t.lat, t.lng, "
+            "SELECT t.enodeb_name, t.site_id, t.town, t.state, t.lat, t.lng, "
             f"COALESCE({_STATE_AT}, 'UNKNOWN') AS status "
-            "FROM tower t WHERE t.lat BETWEEN :min_lat AND :max_lat AND t.lng BETWEEN :min_lng AND :max_lng) "
-            "WHERE (:status IS NULL OR status = :status) ORDER BY enodeb_name LIMIT :limit",
-            {
-                "now": self._now(),
-                "min_lat": min_lat,
-                "max_lat": max_lat,
-                "min_lng": min_lng,
-                "max_lng": max_lng,
-                "status": status,
-                "limit": limit,
-            },
+            "FROM tower t WHERE t.lat BETWEEN :min_lat AND :max_lat AND t.lng BETWEEN :min_lng AND :max_lng "
+            "ORDER BY t.enodeb_name",
+            {"now": now, "min_lat": min_lat, "max_lat": max_lat, "min_lng": min_lng, "max_lng": max_lng},
         ).fetchall()
-        return [TowerPin(**{k: r[k] for k in TowerPin.model_fields}) for r in rows]
+        pins: list[TowerPin] = []
+        for r in rows:
+            pin = {k: r[k] for k in TowerPin.model_fields}
+            if pin["status"] != "UNKNOWN":
+                pin["status"] = repairs.status(self._conn, r["enodeb_name"], now, r["status"])
+            if status is None or pin["status"] == status:
+                pins.append(TowerPin(**pin))
+            if len(pins) >= limit:
+                break
+        return pins
 
     def list_alarms(
         self, enodeb_name: str | None, severity: str | None, active_only: bool, limit: int
@@ -144,19 +146,29 @@ class SqliteTowerSource:
             "raised_min DESC, alarm_id LIMIT :limit",
             {"now": now, "name": enodeb_name, "severity": severity, "limit": limit},
         ).fetchall()
-        return [
-            Alarm(
-                alarm_id=r["alarm_id"],
-                enodeb_name=r["enodeb_name"],
-                code=r["code"],
-                severity=r["severity"],
-                message=r["message"],
-                raised_at=clock.iso_at(self._conn, r["raised_min"]),
-                cleared_at=clock.iso_at(self._conn, r["cleared_min"]) if r["cleared_min"] is not None else None,
-                active=r["cleared_min"] is None or r["cleared_min"] > now,
+        alarms: list[Alarm] = []
+        for r in rows:
+            cleared = r["cleared_min"]
+            if cleared is None or cleared > now:
+                # a repair (finished field job, reset of a hung cell) clears what the seed leaves open
+                fixed = repairs.alarm_cleared_min(self._conn, r["enodeb_name"], now, r["raised_min"])
+                cleared = fixed if fixed is not None else cleared
+            active = cleared is None or cleared > now
+            if active_only and not active:
+                continue
+            alarms.append(
+                Alarm(
+                    alarm_id=r["alarm_id"],
+                    enodeb_name=r["enodeb_name"],
+                    code=r["code"],
+                    severity=r["severity"],
+                    message=r["message"],
+                    raised_at=clock.iso_at(self._conn, r["raised_min"]),
+                    cleared_at=clock.iso_at(self._conn, cleared) if cleared is not None else None,
+                    active=active,
+                )
             )
-            for r in rows
-        ]
+        return alarms
 
 
 class SqliteSourceFactory:

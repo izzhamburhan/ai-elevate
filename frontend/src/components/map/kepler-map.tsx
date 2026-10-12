@@ -11,11 +11,10 @@ import { getTheme, useTheme } from "@/lib/theme";
 import { ChatFullscreenContext } from "./chat-fullscreen";
 import { ChatMapSync } from "./chat-map-sync";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
-import { BASEMAP_FOR_THEME, makeKeplerStore } from "./kepler-store";
+import { BASEMAP_FOR_THEME, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
 import { useKeplerBridge } from "./use-kepler-bridge";
 
-const MAP_ID = "workspace";
 const SIDE_PANEL_WIDTH = 400;
 /** kepler pads the panel by this on both sides (see `kepler-theme.ts`). */
 const SIDE_PANEL_MARGIN = keplerLightTheme.sidePanel.margin.left;

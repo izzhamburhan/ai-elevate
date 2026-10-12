@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from menara_core import clock, settings
+from menara_core import clock, repairs, settings
 from menara_core.envelope import Envelope, wrap
 from menara_core.errors import InvalidInputError, NotFoundError
 from menara_core.geo import haversine_km
@@ -74,7 +74,7 @@ def _status(conn: sqlite3.Connection, name: str, now: int) -> tuple[str, bool]:
     ).fetchone()
     if row is None:
         row = conn.execute("SELECT status, mains_ok FROM tower_state WHERE enodeb_name = ? ORDER BY t_min LIMIT 1", (name,)).fetchone()
-    return (str(row["status"]), bool(row["mains_ok"])) if row else ("UP", True)
+    return (repairs.status(conn, name, now, str(row["status"])), bool(row["mains_ok"])) if row else ("UP", True)
 
 
 def _customers(conn: sqlite3.Connection, names: list[str]) -> int:

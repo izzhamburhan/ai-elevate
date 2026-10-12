@@ -8,14 +8,17 @@ Usage (from backend/):
     python run_all.py list             # names and ports
 
 Menara servers are found by scanning */src/*/server.py for DEFAULT_PORT, so a new MCP shows up without
-changes. Missing seed data is created on first run. Every server starts with --search (BM25 tool search) unless --no-search is given. netops-mcp keeps its own environment (Python 3.12, fastmcp) and is started from its own folder.
-Ports: frontend 3000, netops 8000, Menara MCPs 8101-8123.
+changes. Missing seed data is created on first run, and the Menara DB is built from NetOps's data. Every server
+starts with --search (BM25 tool search) unless --no-search is given. netops-mcp keeps its own environment
+(Python 3.12, fastmcp) and is started from its own folder.
+Ports: frontend 3000, netops 8000, Menara MCPs 8101-8124.
 """
 
 from __future__ import annotations
 
 import re
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -47,25 +50,44 @@ def port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def menara_linked(db: Path) -> bool:
+    """True when menara.db was seeded from NetOps."""
+    try:
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+            row = conn.execute("SELECT value FROM seed_meta WHERE key = 'netops_linked'").fetchone()
+        return bool(row)
+    except sqlite3.Error:
+        return False
+
+
 def seed_if_missing(selected: list[str]) -> None:
-    """One-time data setup, only for files that do not exist yet (netops places download takes ~2 min)."""
-    if any(n != "netops" for n in selected) and not (ROOT / "data" / "menara.db").exists():
-        print("seeding Menara DB ...")
-        subprocess.run(["uv", "run", "--no-sync", "python", "-m", "menara_core.seed.cli"], cwd=ROOT, check=True)
+    """One-time data setup, only for files that do not exist yet (netops places download takes ~2 min).
+
+    NetOps is the main dataset: the Menara DB is built from netops.duckdb whenever that file exists,
+    and rebuilt once if an older menara.db was seeded without it."""
+    netops_data = NETOPS / "data"
     if "dosm" in selected and not (ROOT / "dosm-mcp" / "data" / "dosm.duckdb").exists():
         print("downloading DOSM open data (~80 MB, ~1 min) ...")
         subprocess.run(["uv", "run", "--no-sync", "python", "-m", "dosm_mcp.download"], cwd=ROOT, check=True)
     if "netops" in selected:
-        data = NETOPS / "data"
         steps = [
             ("netops.duckdb", "netops_mcp.seed"),
             ("boundaries_my.parquet", "netops_mcp.seed.boundaries"),
             ("places_my.parquet", "netops_mcp.seed.places"),
         ]
         for filename, module in steps:
-            if not (data / filename).exists():
+            if not (netops_data / filename).exists():
                 print(f"seeding netops: {filename} ...")
                 subprocess.run(["uv", "run", "--no-sync", "--python", PY, "python", "-m", module], cwd=NETOPS, check=True)
+    if any(n != "netops" for n in selected):
+        menara_db = ROOT / "data" / "menara.db"
+        netops_db = netops_data / "netops.duckdb"
+        if not menara_db.exists() or (netops_db.exists() and not menara_linked(menara_db)):
+            print("seeding Menara DB" + (" from NetOps ..." if netops_db.exists() else " ..."))
+            cmd = ["uv", "run", "--no-sync", "python", "-m", "menara_core.seed.cli"]
+            if netops_db.exists():
+                cmd += ["--netops-db", str(netops_db)]
+            subprocess.run(cmd, cwd=ROOT, check=True)
 
 
 def stop(proc: subprocess.Popen[bytes]) -> None:

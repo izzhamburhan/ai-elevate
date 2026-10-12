@@ -19,6 +19,8 @@ export const MALAYSIA_VIEW = {
   bearing: 0,
 };
 
+export const MAP_ID = "workspace";
+
 /** CARTO basemaps (no Mapbox token needed) matching the app theme. */
 export const BASEMAP_FOR_THEME = { light: "positron", dark: "dark-matter" } as const;
 

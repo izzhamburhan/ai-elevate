@@ -16,7 +16,7 @@ import sqlite3
 from datetime import datetime
 from typing import cast
 
-from menara_core import clock, settings
+from menara_core import clock, repairs, settings
 from menara_core.envelope import Envelope, wrap
 from menara_core.errors import InvalidInputError, NotFoundError
 from menara_core.geo import haversine_km
@@ -33,7 +33,7 @@ SKILL_PARTS = {"POWER": ("GENERATOR", "RECTIFIER", "BATTERY"), "RAN": ("ANTENNA"
 ROAD_KMH = 55.0
 BOAT_EXTRA_MIN = 25
 BOAT_DEPTH_M = 0.3
-WORK_MIN = 90
+WORK_MIN = repairs.FIELD_WORK_MIN  # a finished job repairs the tower (menara_core.repairs)
 MAX_CANDIDATES = 5
 STATUSES = ("EN_ROUTE", "ON_SITE", "DONE")
 ACCESS_CHOICES = ("AUTO", "ROAD", "BOAT")

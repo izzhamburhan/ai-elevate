@@ -1,6 +1,8 @@
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import type { ToolSet } from "ai";
 
+import { AGENT_HIDDEN_TOOLS } from "@/lib/menara/servers";
+
 import type { McpServerInspection, McpServerRequest } from "./mcp-config";
 
 /**
@@ -23,6 +25,31 @@ function openClient({ url, transport, headers }: McpServerRequest): Promise<MCPC
   return createMCPClient({ transport: { type: transport, url, headers } });
 }
 
+/**
+ * A server started with --search lists only `<name>_search_tools` and `<name>_call_tool`, so the human-only tools
+ * (approvals, policy settings, demo reset) are reachable through the call tool. Refuse those calls here too.
+ */
+function guardSearchCalls(tools: ToolSet): ToolSet {
+  const guarded: ToolSet = {};
+  for (const [name, tool] of Object.entries(tools)) {
+    const execute = tool.execute;
+    guarded[name] =
+      name.endsWith("_call_tool") && execute
+        ? {
+            ...tool,
+            execute: (input, options) => {
+              const target = (input as { name?: unknown } | undefined)?.name;
+              if (typeof target === "string" && AGENT_HIDDEN_TOOLS.has(target)) {
+                throw new Error(`${target} is for a human only and cannot be called by the assistant.`);
+              }
+              return execute(input, options);
+            },
+          }
+        : tool;
+  }
+  return guarded;
+}
+
 export type McpToolbox = {
   tools: ToolSet;
   /** Idempotent; call when the response stream ends or the request is aborted. */
@@ -43,8 +70,8 @@ export async function connectMcpTools(userServers: McpServerRequest[] = []): Pro
       try {
         const definitions = await client.listTools();
         const disabled = new Set(server.disabledTools ?? []);
-        const enabled = definitions.tools.filter((tool) => !disabled.has(tool.name));
-        return { client, tools: client.toolsFromDefinitions({ ...definitions, tools: enabled }) };
+        const enabled = definitions.tools.filter((tool) => !disabled.has(tool.name) && !AGENT_HIDDEN_TOOLS.has(tool.name));
+        return { client, tools: guardSearchCalls(client.toolsFromDefinitions({ ...definitions, tools: enabled })) };
       } catch (error) {
         await client.close().catch(() => {});
         throw error;

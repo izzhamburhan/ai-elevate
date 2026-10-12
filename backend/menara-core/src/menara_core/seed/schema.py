@@ -27,6 +27,14 @@ CREATE TABLE tower (
 );
 CREATE INDEX idx_tower_geo ON tower (lat, lng);
 
+-- Which NetOps Site4G row each tower came from; empty unless seeded with --netops-db.
+CREATE TABLE netops_link (
+    enodeb_name        TEXT PRIMARY KEY REFERENCES tower (enodeb_name),
+    netops_site_id     TEXT NOT NULL,
+    netops_enodeb_id   INTEGER NOT NULL,
+    netops_cluster_id  TEXT NOT NULL
+);
+
 CREATE TABLE cell (
     cell_id     TEXT PRIMARY KEY,
     enodeb_name TEXT NOT NULL REFERENCES tower (enodeb_name),

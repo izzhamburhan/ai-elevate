@@ -3,8 +3,8 @@ revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version >= '3.15' and sys_platform != 'win32'",
     "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version >= '3.15' and sys_platform != 'win32'",
     "python_full_version == '3.14.*' and sys_platform != 'win32'",
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform != 'win32'",
@@ -13,6 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "care-mcp",
+    "demo-mcp",
     "dosm-mcp",
     "drone-mcp",
     "energy-mcp",
@@ -403,6 +404,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/c1/3debeeb6e0eb74a51d6f8cf1f273ed7c479e3321631cbf89fb9700e65e28/cyclopts-5.2.0.tar.gz", hash = "sha256:b63c1b1beaadf3ead19214385a0f90b990f152c4107c174e1724c45dc71e9541", size = 246542, upload-time = "2026-10-06T15:02:39.212Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/dd/3f73d04c95f6acc6a54700011637e49362e337139b518be895edf4786f87/cyclopts-5.2.0-py3-none-any.whl", hash = "sha256:5da2a5d65164e03008621fc4795946b88a722b881398b5dfa58afa6218342cff", size = 289196, upload-time = "2026-10-06T15:02:37.57Z" },
+]
+
+[[package]]
+name = "demo-mcp"
+version = "0.1.0"
+source = { editable = "demo-mcp" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "menara-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp", specifier = ">=4.1" },
+    { name = "menara-core", editable = "menara-core" },
 ]
 
 [[package]]
@@ -1050,6 +1066,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "care-mcp" },
+    { name = "demo-mcp" },
     { name = "dosm-mcp" },
     { name = "drone-mcp" },
     { name = "energy-mcp" },
@@ -1084,6 +1101,7 @@ requires-dist = [{ name = "menara-core", editable = "menara-core" }]
 [package.metadata.requires-dev]
 dev = [
     { name = "care-mcp", editable = "care-mcp" },
+    { name = "demo-mcp", editable = "demo-mcp" },
     { name = "dosm-mcp", editable = "dosm-mcp" },
     { name = "drone-mcp", editable = "drone-mcp" },
     { name = "energy-mcp", editable = "energy-mcp" },
@@ -1117,6 +1135,7 @@ name = "menara-core"
 version = "0.1.0"
 source = { editable = "menara-core" }
 dependencies = [
+    { name = "duckdb" },
     { name = "fastmcp" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1124,6 +1143,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", specifier = ">=1.0" },
     { name = "fastmcp", specifier = ">=4.1" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pyyaml", specifier = ">=6.0" },

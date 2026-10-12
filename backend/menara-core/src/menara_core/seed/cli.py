@@ -16,11 +16,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenario", type=Path, default=None, help="scenario YAML")
     parser.add_argument("--towers", type=int, default=DEFAULT_TOWER_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--netops-db", type=Path, default=None,
+        help="build towers, cells, KPI and status from this NetOps netops.duckdb (stop the NetOps server first)",
+    )
     args = parser.parse_args(argv)
 
     db_path = args.db or settings.db_path()
     scenario = load_scenario(args.scenario or settings.default_scenario_path())
-    counts = build(db_path, scenario, towers=args.towers, seed=args.seed)
+    counts = build(db_path, scenario, towers=args.towers, seed=args.seed, netops_db=args.netops_db)
     print(f"Seeded {db_path} (synthetic, seed={args.seed}, scenario={scenario.name})")
     for table, count in counts.items():
         print(f"  {table}: {count}")

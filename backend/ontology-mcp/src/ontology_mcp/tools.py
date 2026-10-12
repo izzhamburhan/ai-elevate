@@ -12,7 +12,7 @@ import sqlite3
 from collections import Counter
 from typing import Any, cast
 
-from menara_core import clock, kpi_overlay
+from menara_core import clock, kpi_overlay, repairs
 from menara_core.envelope import Envelope, wrap
 from menara_core.errors import InvalidInputError, NotFoundError
 from menara_core.geo import bbox_around, haversine_km
@@ -65,7 +65,7 @@ def _status(conn: sqlite3.Connection, name: str, now: int) -> TowerStatus:
         "SELECT status FROM tower_state WHERE enodeb_name = ? AND t_min <= ? ORDER BY t_min DESC LIMIT 1",
         (name, now),
     ).fetchone()
-    return cast(TowerStatus, row["status"]) if row else "UNKNOWN"
+    return cast(TowerStatus, repairs.status(conn, name, now, row["status"])) if row else "UNKNOWN"
 
 
 def _subscribers(conn: sqlite3.Connection, name: str) -> int:
