@@ -1,22 +1,17 @@
-import { Map as MapIcon, User } from "lucide-react";
 import Link from "next/link";
+import { User } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Wordmark } from "@/components/wordmark";
 
-/** Compact (40px, Palantir-style) app bar: brand on the left, theme toggle + account on the right. */
+/** Compact (44px) app bar, like the window bar in the site's workspace mock: wordmark left, theme toggle + account right. */
 export function TopBar() {
   return (
-    <header className="relative z-[100] flex h-10 shrink-0 items-center justify-between border-b bg-background px-3">
-      <Link href="/" className="flex items-center gap-1.5" aria-label="Elevate home">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-          <MapIcon className="size-3.5" />
-        </span>
-        <span className="text-[15px] font-bold tracking-tight">Elevate</span>
-        <Badge variant="brand" className="h-4 px-1.5 text-[9px] font-semibold tracking-wide">
-          BETA
-        </Badge>
+    <header className="relative z-[100] flex h-11 shrink-0 items-center justify-between border-b bg-background px-4">
+      <Link href="/" className="flex items-center gap-2 rounded-md" aria-label="Elevate home">
+        <Wordmark className="text-[19px]" />
+        <span className="rounded bg-brand px-1.5 py-0.5 text-[10px] leading-none font-medium text-brand-foreground">Beta</span>
       </Link>
 
       <div className="flex items-center gap-2">

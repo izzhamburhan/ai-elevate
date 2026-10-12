@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, HeartPulse, Loader2, MapPinned, ShieldAlert, X } from "lucide-react";
+import { Check, Loader2, MapPinned, ShieldAlert, Wrench, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FLOATING_EVENT, useMapDraw } from "@/lib/menara/map-draw";
+import { TOWER_STATUS_COLOR } from "@/lib/map-colors";
 import { cn } from "@/lib/utils";
 
 type Stage = "detect" | "diagnose" | "simulate" | "approve" | "apply" | "verify" | "rollback" | "recover";
@@ -40,8 +41,16 @@ type HealState = {
   map: { towers: MapTower[] };
 };
 
-const SERIES_COLORS = ["#7c5cff", "#f59e0b", "#10b981", "#38bdf8"];
-const MAP_COLORS = { failed: "#ef4444", degraded: "#eab308", hot: "#f97316", ok: "#22c55e", tilted: "#a855f7", link: "#f59e0b" };
+/** Chart lines in the shared hues; amber is kept for the overload line, as on the site. */
+const SERIES_COLORS = ["var(--violet)", "var(--blue)", "var(--teal)", "var(--magenta)"];
+const MAP_COLORS = {
+  failed: TOWER_STATUS_COLOR.DOWN,
+  degraded: TOWER_STATUS_COLOR.DEGRADED,
+  hot: "#f97316",
+  ok: TOWER_STATUS_COLOR.UP,
+  tilted: "#a855f7",
+  link: "#f59e0b",
+};
 const towerColor = (status: string) => (status === "UP" ? MAP_COLORS.ok : status === "DEGRADED" ? MAP_COLORS.degraded : MAP_COLORS.failed);
 
 async function post<T>(url: string, body: unknown = {}): Promise<T> {
@@ -77,8 +86,8 @@ function Chart({ state, width = 360, height = 170 }: { state: HealState; width?:
             </text>
           </g>
         ))}
-        <line x1={pad.l} x2={width - pad.r} y1={y(state.threshold)} y2={y(state.threshold)} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={0.9} />
-        <text x={width - pad.r} y={y(state.threshold) - 3} textAnchor="end" fill="#ef4444" className="text-[9px]">
+        <line x1={pad.l} x2={width - pad.r} y1={y(state.threshold)} y2={y(state.threshold)} className="stroke-amber" strokeDasharray="3 3" strokeWidth={0.9} />
+        <text x={width - pad.r} y={y(state.threshold) - 3} textAnchor="end" className="fill-amber text-[9px]">
           overload {state.threshold}%
         </text>
         {marks.map((m, i) =>
@@ -95,7 +104,7 @@ function Chart({ state, width = 360, height = 170 }: { state: HealState; width?:
           <polyline
             key={tower}
             fill="none"
-            stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+            style={{ stroke: SERIES_COLORS[i % SERIES_COLORS.length] }}
             strokeWidth={1.6}
             points={state.series[tower].map((p) => `${x(p.t_min).toFixed(1)},${y(p.prb).toFixed(1)}`).join(" ")}
           />
@@ -115,7 +124,7 @@ function Chart({ state, width = 360, height = 170 }: { state: HealState; width?:
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+    <div className="min-w-0 rounded-xl border bg-foreground/[0.02] px-2 py-1.5">
       <div className={cn("truncate whitespace-nowrap text-[13px] font-semibold tabular-nums", tone)} title={value}>
         {value}
       </div>
@@ -127,13 +136,13 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: str
 /** The human-in-the-loop prompt: nothing risky happens until a person presses Approve. */
 function ApprovalBox({ summary, onDecide }: { summary: string; onDecide: (approve: boolean) => void }) {
   return (
-    <div className="rounded-lg border border-amber-500/60 bg-amber-500/10 p-2.5 text-[12px]">
-      <p className="mb-1 flex items-center gap-1.5 font-semibold">
-        <ShieldAlert className="size-3.5 text-amber-500" /> Your approval is needed
+    <div className="rounded-xl border border-amber/30 bg-amber/10 p-2.5 text-[12px]">
+      <p className="mb-1 flex items-center gap-1.5 font-medium">
+        <ShieldAlert className="size-3.5 text-amber" /> Your approval is needed
       </p>
       <p className="mb-2 text-muted-foreground">{summary}</p>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => onDecide(true)}>
+        <Button size="sm" variant="brand" onClick={() => onDecide(true)}>
           Approve
         </Button>
         <Button size="sm" variant="outline" onClick={() => onDecide(false)}>
@@ -305,8 +314,11 @@ export function HealPanel({ runId }: { runId?: string }) {
 
   return (
     <div className="flex max-h-[40rem] flex-col gap-3 overflow-y-auto rounded-xl border bg-card/40 p-3 font-sans text-foreground">
-      <h2 className="flex items-center gap-1.5 truncate text-sm font-bold tracking-tight">
-        <HeartPulse className="size-4 text-red-500" /> Self-heal{state ? ` · ${state.failed_tower}` : ""}
+      <h2 className="flex items-center gap-2 truncate text-sm font-medium">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-magenta/15 text-magenta">
+          <Wrench className="size-3.5" />
+        </span>
+        Self-heal{state ? ` · ${state.failed_tower}` : ""}
       </h2>
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
@@ -324,7 +336,7 @@ export function HealPanel({ runId }: { runId?: string }) {
               className={cn(
                 "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors",
                 active && "border-primary bg-primary/10",
-                done && s.id === "rollback" && "border-red-500/40 bg-red-500/10",
+                done && s.id === "rollback" && "border-red/30 bg-red/10",
                 !active && !done && "text-muted-foreground",
               )}
             >
@@ -332,13 +344,13 @@ export function HealPanel({ runId }: { runId?: string }) {
                 {active ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : done ? (
-                  <Check className={cn("size-3.5", s.id === "rollback" ? "text-red-500" : "text-emerald-500")} />
+                  <Check className={cn("size-3.5", s.id === "rollback" ? "text-red" : "text-green")} />
                 ) : (
                   <span className="size-1.5 rounded-full bg-muted-foreground/40" />
                 )}
               </span>
               <span className="font-medium">{s.title}</span>
-              {latest?.attempt ? <span className="whitespace-nowrap rounded bg-muted px-1 text-[10px]">try {latest.attempt}</span> : null}
+              {latest?.attempt ? <span className="whitespace-nowrap rounded-full bg-muted px-1.5 text-[10px]">try {latest.attempt}</span> : null}
               <span className="ml-auto truncate text-right text-muted-foreground">{latest?.label ?? ""}</span>
             </li>
           );
@@ -374,20 +386,28 @@ export function HealPanel({ runId }: { runId?: string }) {
             <div
               role="dialog"
               aria-label="Self-heal"
-              className="fixed right-4 bottom-10 z-[60] flex max-h-[70vh] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-2.5 overflow-y-auto rounded-xl border bg-background/95 p-3 font-sans text-foreground shadow-xl backdrop-blur"
+              className="fixed right-4 bottom-10 z-[60] flex max-h-[70vh] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-2.5 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
             >
-              <div className="flex items-center gap-1.5">
-                <HeartPulse className="size-4 text-red-500" />
-                <h3 className="text-[13px] font-semibold">Self-heal{state ? ` · ${state.failed_tower}` : ""}</h3>
+              <div className="flex items-center gap-2">
+                <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-magenta/15 text-magenta">
+                  <Wrench className="size-3.5" />
+                </span>
+                <h3 className="text-[13px] font-medium">Self-heal{state ? ` · ${state.failed_tower}` : ""}</h3>
                 <span
                   className={cn(
-                    "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                    running ? "bg-primary/15 text-primary" : status === "done" ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground",
+                    "rounded-full border px-2 py-0.5 text-[10.5px] font-medium",
+                    approval
+                      ? "border-amber/30 bg-amber/10 text-amber"
+                      : running
+                        ? "border-violet/30 bg-violet/10 text-violet"
+                        : status === "done"
+                          ? "border-green/30 bg-green/10 text-green"
+                          : "border-border bg-muted text-muted-foreground",
                   )}
                 >
                   {approval ? "waiting for you" : running ? "running" : status}
                 </span>
-                <button type="button" onClick={close} aria-label="Close" className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                <button type="button" onClick={close} aria-label="Close" className="ml-auto rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                   <X className="size-3.5" />
                 </button>
               </div>
@@ -401,14 +421,14 @@ export function HealPanel({ runId }: { runId?: string }) {
                     <Tile
                       label="Tower"
                       value={(state.failed_status ?? "?").toLowerCase()}
-                      tone={state.failed_status === "UP" ? "text-emerald-500" : state.failed_status === "DEGRADED" ? "text-yellow-500" : "text-red-500"}
+                      tone={state.failed_status === "UP" ? "text-green" : state.failed_status === "DEGRADED" ? "text-amber" : "text-red"}
                     />
-                    <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red-500" : undefined} />
-                    <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-emerald-500" : undefined} />
-                    <Tile label="Incident" value={(state.incident?.status ?? "none").toLowerCase()} tone={state.incident?.status === "RESOLVED" ? "text-emerald-500" : undefined} />
+                    <Tile label="Peak load" value={peak != null ? `${peak.toFixed(0)}%` : "–"} tone={peak != null && peak >= state.threshold ? "text-red" : undefined} />
+                    <Tile label="Load now" value={now != null ? `${now.toFixed(0)}%` : "–"} tone={now != null && now < state.threshold ? "text-green" : undefined} />
+                    <Tile label="Incident" value={(state.incident?.status ?? "none").toLowerCase()} tone={state.incident?.status === "RESOLVED" ? "text-green" : undefined} />
                   </div>
                   <section>
-                    <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">PRB load of the neighbours of {state.failed_tower}</h4>
+                    <h4 className="mb-1 text-[12px] font-medium text-muted-foreground">PRB load of the neighbours of {state.failed_tower}</h4>
                     <Chart state={state} width={380} height={180} />
                   </section>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">

@@ -11,7 +11,7 @@ Menara servers are found by scanning */src/*/server.py for DEFAULT_PORT, so a ne
 changes. Missing seed data is created on first run, and the Menara DB is built from NetOps's data. Every server
 starts with --search (BM25 tool search) unless --no-search is given. netops-mcp keeps its own environment
 (Python 3.12, fastmcp) and is started from its own folder.
-Ports: frontend 3000, netops 8000, Menara MCPs 8101-8124.
+Ports: frontend 3000, netops 8000, Menara MCPs 8101-8126.
 """
 
 from __future__ import annotations
@@ -88,6 +88,14 @@ def seed_if_missing(selected: list[str]) -> None:
             if netops_db.exists():
                 cmd += ["--netops-db", str(netops_db)]
             subprocess.run(cmd, cwd=ROOT, check=True)
+    # hourly network data from netops.duckdb (before NetOps opens it), then the ML dataset and models; each step only
+    # runs when its output is missing or older than its generator (a few seconds to a minute each)
+    if {"netintel", "mlpredict"} & set(selected) and (netops_data / "netops.duckdb").exists():
+        steps = [["netintel_mcp.seed"]]
+        if "mlpredict" in selected:
+            steps += [["mlpredict_mcp.data"], ["mlpredict_mcp.train"]]
+        for module in steps:
+            subprocess.run(["uv", "run", "--no-sync", "python", "-m", *module, "--if-stale"], cwd=ROOT, check=True)
 
 
 def stop(proc: subprocess.Popen[bytes]) -> None:

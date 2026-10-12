@@ -4,12 +4,22 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "react-redux";
 import { useAui } from "@assistant-ui/react";
-import { Loader2, MessageSquareText, Route, X } from "lucide-react";
+import {
+  addLayer,
+  interactionConfigChange,
+  setFilterAnimationTimeConfig,
+  setFilterAnimationWindow,
+  setFilterView,
+  toggleFilterAnimation,
+  wrapTo,
+} from "@kepler.gl/actions";
+import { Loader2, MapPin, MessageSquareText, Pause, Play, Route, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { pointInRing } from "@/lib/menara/geometry";
 import { viewFor } from "@/lib/menara/map-draw";
+import { TOWER_STATUS_COLOR } from "@/lib/map-colors";
 import { cn } from "@/lib/utils";
 
 import { MAP_ID, type makeKeplerStore } from "../kepler-store";
@@ -47,20 +57,31 @@ const PER_TOWER_SAMPLE = 6;
 const MAX_TOWERS_SAMPLED = 25;
 
 const TRAIL_EVENT = "menara:trail-open";
+const TRAIL_DATA = "trail_moves";
+const TRAIL_FILTER = "trail_time";
+type TooltipConfig = { config: { fieldsToShow: Record<string, { name: string; format: string | null }[]> } };
+const SAMPLE_MIN = 15; // presence samples during each stay, so the playback histogram shows when the phone was seen
+const LABEL_SLOTS = 3; // the 1st, 2nd and 3rd visit to the same cell are labelled side by side
+
+/** An ISO time with the Malaysia offset, e.g. "2026-11-13T08:43:00+08:00". */
+function isoMyt(ms: number) {
+  return `${new Date(ms + 8 * 3600_000).toISOString().slice(0, 19)}+08:00`;
+}
+
 
 export type Section = "towers" | "subscribers" | "usage";
 
-const STATUS_COLOR: Record<string, string> = { UP: "#22c55e", DEGRADED: "#f59e0b", DOWN: "#ef4444" };
+const STATUS_COLOR: Record<string, string> = TOWER_STATUS_COLOR;
 const LABEL_STYLE: Record<string, string> = {
-  GOOD: "bg-emerald-500/15 text-emerald-500",
-  FAIR: "bg-amber-500/15 text-amber-500",
+  GOOD: "bg-green/15 text-green",
+  FAIR: "bg-amber/15 text-amber",
   POOR: "bg-orange-500/15 text-orange-500",
-  NO_SERVICE: "bg-red-500/15 text-red-500",
+  NO_SERVICE: "bg-red/15 text-red",
 };
 const ROUTINE_STYLE: Record<Routine["kind"], { chip: string; color: string }> = {
-  home: { chip: "bg-sky-500/15 text-sky-400", color: "#38bdf8" },
-  weekday: { chip: "bg-yellow-500/15 text-yellow-400", color: "#facc15" },
-  weekend: { chip: "bg-teal-500/15 text-teal-400", color: "#2dd4bf" },
+  home: { chip: "bg-blue/15 text-blue", color: "#38bdf8" },
+  weekday: { chip: "bg-amber/15 text-amber", color: "#facc15" },
+  weekend: { chip: "bg-teal/15 text-teal", color: "#2dd4bf" },
 };
 
 async function menara<T>(tool: string, args: Record<string, unknown>): Promise<T> {
@@ -92,7 +113,7 @@ function segmentsOf(rings: number[][][]) {
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
-    <div className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+    <div className="min-w-0 rounded-xl border bg-foreground/[0.02] px-2 py-1.5">
       <div className={cn("whitespace-nowrap text-[13px] font-semibold tabular-nums", tone)}>{value}</div>
       <div className="truncate text-[10.5px] text-muted-foreground">{label}</div>
     </div>
@@ -129,6 +150,7 @@ export function AreaCard({
   const [trail, setTrail] = useState<{ hash: string; segments: Segment[] } | null>(null);
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [trailBusy, setTrailBusy] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
   const cardId = useId();
 
   // one trail card on the page: when another chat card opens a trail, this one closes its own
@@ -236,6 +258,8 @@ export function AreaCard({
   const closeTrail = () => {
     setTrail(null);
     setRoutines(null);
+    setPlaying(false);
+    // removing the dataset also removes its time filter and the playback bar
     removeOurs(["trail_"]);
   };
 
@@ -258,18 +282,12 @@ export function AreaCard({
       setRoutines(routineReply.routines ?? []);
       setTrailBusy(null);
       removeOurs(["trail_"]);
-      await addPoints("trail_stops", "Trail stops", segments.map((s, i) => ({ order: i + 1, cell: s.serving_cell, lat: s.cell_lat, lng: s.cell_lng })), TRAIL_COLOR, STOP_RADIUS);
-      await addLines(
-        "trail_lines",
-        "Trail",
-        segments.slice(1).map((s, i) => ({ lat0: segments[i].cell_lat, lng0: segments[i].cell_lng, lat1: s.cell_lat, lng1: s.cell_lng })),
-        TRAIL_COLOR,
-        3,
-      );
+      // routine markers first: kepler draws newer layers on top, so the trail stays visible over them
       for (const kind of ["home", "weekday", "weekend"] as const) {
         const rows = (routineReply.routines ?? []).filter((r) => r.kind === kind).map((r) => ({ name: r.tower, kind, lat: r.lat, lng: r.lng }));
         await addPoints(`trail_${kind}`, `Routine ${kind}`, rows, ROUTINE_STYLE[kind].color, ROUTINE_RADIUS);
       }
+      await drawTrailPlayback(segments);
       // fit the map to the area and the whole trail, which can leave the area
       if (segments.length && area) {
         const [west, south, east, north] = area.place.bbox;
@@ -281,6 +299,148 @@ export function AreaCard({
       setTrailBusy(null);
       setError(e instanceof Error ? e.message : String(e));
     }
+  };
+
+  /**
+   * The trail as one dataset, one row per cell visit with its arrival time: a point layer for the stops and a line layer
+   * for the move from the previous stop. A time filter on the arrival time gives kepler's time playback bar at the bottom
+   * of the map; the "incremental" window keeps the start fixed, so the trail grows as it plays.
+   */
+  const drawTrailPlayback = async (segments: Segment[]) => {
+    if (!segments.length) return;
+    const seen = new Map<string, number>();
+    const rows: Record<string, string | number>[] = [];
+    segments.forEach((s, i) => {
+      const nth = (seen.get(s.serving_cell) ?? 0) + 1;
+      seen.set(s.serving_cell, nth);
+      const labels = Object.fromEntries(Array.from({ length: LABEL_SLOTS }, (_, k) => [`label_${k + 1}`, k === Math.min(nth, LABEL_SLOTS) - 1 ? `#${i + 1}` : ""]));
+      const base = {
+        order: i + 1,
+        cell: s.serving_cell,
+        tower: s.enodeb_name,
+        stay_min: Math.round(s.duration_min),
+        lat: s.cell_lat,
+        lng: s.cell_lng,
+      };
+      // the visit: a stop, a move from the previous stop, and its number next to the circle
+      rows.push({
+        ...base,
+        kind: "visit",
+        // ISO with its +08:00 offset, so the time is right whatever the viewer's time zone
+        arrived_at: s.arrived_at,
+        // what the tooltip shows: kepler prints timestamps in UTC there
+        time_myt: `${s.arrived_at.slice(0, 10)} ${s.arrived_at.slice(11, 16)}`,
+        lat0: i ? segments[i - 1].cell_lat : s.cell_lat,
+        lng0: i ? segments[i - 1].cell_lng : s.cell_lng,
+        ...labels,
+      });
+      // still there: a sample every SAMPLE_MIN minutes of the stay (no move, no label)
+      const start = Date.parse(s.arrived_at);
+      for (let at = start + SAMPLE_MIN * 60_000; at < start + s.duration_min * 60_000; at += SAMPLE_MIN * 60_000) {
+        const iso = isoMyt(at);
+        rows.push({
+          ...base,
+          kind: "stay",
+          arrived_at: iso,
+          time_myt: `${iso.slice(0, 10)} ${iso.slice(11, 16)}`,
+          lat0: s.cell_lat,
+          lng0: s.cell_lng,
+          ...Object.fromEntries(Array.from({ length: LABEL_SLOTS }, (_, k) => [`label_${k + 1}`, ""])),
+        });
+      }
+    });
+    await runKeplerCommand(store, MAP_ID, "load_data", { rows, label: "Subscriber trail", dataId: TRAIL_DATA, centerMap: false, autoCreateLayers: false });
+    await runKeplerCommand(store, MAP_ID, "add_layer", {
+      dataId: TRAIL_DATA,
+      type: "line",
+      label: "Trail moves",
+      columns: { lat0: "lat0", lng0: "lng0", lat1: "lat", lng1: "lng" },
+      color: TRAIL_COLOR,
+      opacity: 0.9,
+      visConfig: { thickness: 3 },
+    });
+    addStopsWithVisitNumbers();
+    showTooltipFields(TRAIL_DATA, ["order", "cell", "time_myt", "stay_min", "kind"]);
+    const times = rows.map((r) => Date.parse(String(r.arrived_at)));
+    const start = Math.min(...times);
+    // one minute past the last sample, so the last stop is inside the range
+    const end = Math.max(...times) + 60_000;
+    try {
+      await runKeplerCommand(store, MAP_ID, "add_filter", { dataId: TRAIL_DATA, field: "arrived_at", filterId: TRAIL_FILTER, value: [start, end] });
+      const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID].visState.filters;
+      const idx = filters.findIndex((f) => f.id === TRAIL_FILTER);
+      if (idx >= 0) {
+        // kepler's full playback panel (histogram, play, speed) at the bottom of the map, in Malaysia time
+        store.dispatch(wrapTo(MAP_ID, setFilterView(idx, "enlarged")));
+        store.dispatch(wrapTo(MAP_ID, setFilterAnimationTimeConfig(idx, { timezone: "Asia/Kuala_Lumpur" })));
+        store.dispatch(wrapTo(MAP_ID, setFilterAnimationWindow({ id: TRAIL_FILTER, animationWindow: "incremental" })));
+        store.dispatch(wrapTo(MAP_ID, toggleFilterAnimation(idx)));
+        setPlaying(true);
+      }
+    } catch (e) {
+      // the trail still shows without playback
+      console.warn("[trail] time playback unavailable", e);
+    }
+  };
+
+  /**
+   * The stops layer, created with the visit numbers as text labels (one slot per visit to the same cell, side by side).
+   * The labels go in the layer config at creation: kepler builds the label font from the data then, and labels set later
+   * render as empty boxes.
+   */
+  const addStopsWithVisitNumbers = () => {
+    const id = "trail_stops_layer"; // one trail at a time; removeOurs drops it with the dataset
+    const hex = TRAIL_COLOR.replace("#", "");
+    const color = [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16));
+    store.dispatch(
+      wrapTo(
+        MAP_ID,
+        addLayer({
+          id,
+          type: "point",
+          config: {
+            dataId: TRAIL_DATA,
+            label: "Trail stops",
+            columns: { lat: "lat", lng: "lng" },
+            isVisible: true,
+            color,
+            textLabel: Array.from({ length: LABEL_SLOTS }, (_, k) => ({
+              field: { name: `label_${k + 1}`, type: "string" },
+              color: [255, 255, 255],
+              size: 32,
+              offset: [16 + k * 42, -16],
+              anchor: "start",
+              alignment: "center",
+              // a small dark chip behind white digits reads on both basemaps
+              outlineWidth: 0,
+              outlineColor: [0, 0, 0, 0],
+              background: true,
+              backgroundColor: [17, 24, 39, 220],
+            })),
+          },
+          // marks the config as a saved (v1) layer so kepler parses it
+          visualChannels: {},
+        } as never),
+      ),
+    );
+    runKeplerCommand(store, MAP_ID, "update_layer", { layerId: id, radius: STOP_RADIUS });
+  };
+
+  /** Which fields kepler's hover tooltip lists for a dataset. */
+  const showTooltipFields = (dataId: string, names: string[]) => {
+    const tooltip = (store.getState().keplerGl as unknown as Record<string, { visState: { interactionConfig: { tooltip: TooltipConfig } } }>)[MAP_ID]
+      ?.visState.interactionConfig.tooltip;
+    if (!tooltip) return;
+    const fieldsToShow = { ...tooltip.config.fieldsToShow, [dataId]: names.map((name) => ({ name, format: null })) };
+    store.dispatch(wrapTo(MAP_ID, interactionConfigChange({ ...tooltip, config: { ...tooltip.config, fieldsToShow } } as never)));
+  };
+
+  const togglePlayback = () => {
+    const filters = (store.getState().keplerGl as unknown as Record<string, { visState: { filters: { id: string }[] } }>)[MAP_ID]?.visState.filters ?? [];
+    const idx = filters.findIndex((f) => f.id === TRAIL_FILTER);
+    if (idx < 0) return;
+    store.dispatch(wrapTo(MAP_ID, toggleFilterAnimation(idx)));
+    setPlaying((p) => !p);
   };
 
   const counts = (status: string) => area?.towers.filter((t) => t.status === status).length ?? 0;
@@ -299,12 +459,17 @@ export function AreaCard({
   const p = area.place;
   return (
     <div className="flex max-h-[34rem] flex-col gap-3 overflow-y-auto rounded-xl border bg-card/40 p-3 font-sans text-foreground">
-      <div>
-        <h2 className="truncate text-sm font-bold tracking-tight">{p.name}</h2>
-        <p className="text-[11px] text-muted-foreground">
-          {p.level === "point" ? `Circle of ${p.radius_km} km` : `${levelWord(p)}${p.district && p.level === "mukim" ? `, ${p.district}` : ""}${p.state ? `, ${p.state}` : ""}`}
-          {p.rings.length ? " · outline from NetOps boundaries" : ""}
-        </p>
+      <div className="flex items-center gap-2">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-blue/15 text-blue">
+          <MapPin className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-medium">{p.name}</h2>
+          <p className="text-[11px] text-muted-foreground">
+            {p.level === "point" ? `Circle of ${p.radius_km} km` : `${levelWord(p)}${p.district && p.level === "mukim" ? `, ${p.district}` : ""}${p.state ? `, ${p.state}` : ""}`}
+            {p.rings.length ? " · outline from NetOps boundaries" : ""}
+          </p>
+        </div>
       </div>
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
@@ -313,8 +478,8 @@ export function AreaCard({
         {want.has("towers") ? (
           <>
             <Stat label="Towers" value={area.inside} />
-            <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber-500" : undefined} />
-            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red-500" : undefined} />
+            <Stat label="Degraded" value={counts("DEGRADED")} tone={counts("DEGRADED") ? "text-amber" : undefined} />
+            <Stat label="Down" value={counts("DOWN")} tone={counts("DOWN") ? "text-red" : undefined} />
           </>
         ) : null}
         {want.has("subscribers") ? <Stat label="People (est.)" value={area.peopleEst.toLocaleString()} /> : null}
@@ -322,11 +487,11 @@ export function AreaCard({
 
       {want.has("towers") ? (
       <section>
-        <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Towers {p.rings.length ? `inside ${p.name}` : "in the circle"}</h3>
+        <h3 className="mb-1 text-[12px] font-medium text-muted-foreground">Towers {p.rings.length ? `inside ${p.name}` : "in the circle"}</h3>
         <ul className="flex max-h-40 flex-col gap-0.5 overflow-y-auto text-[12px]">
           {area.towers.map((t) => (
             <li key={t.enodeb_name} className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent">
-              <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[t.status] ?? "#888" }} />
+              <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[t.status] ?? TOWER_STATUS_COLOR.UNKNOWN }} />
               <span className="font-medium">{t.enodeb_name}</span>
               <span className="truncate text-muted-foreground">{t.town}</span>
               <span className="ml-auto tabular-nums text-muted-foreground">{t.status}</span>
@@ -339,7 +504,7 @@ export function AreaCard({
 
       {want.has("subscribers") ? (
       <section>
-        <h3 className="mb-1 text-[12px] font-semibold text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
+        <h3 className="mb-1 text-[12px] font-medium text-muted-foreground">Sampled subscribers — pick one for the last 24 h</h3>
         <ul className="flex max-h-44 flex-col gap-0.5 overflow-y-auto text-[12px]">
           {area.subscribers.map((s) => (
             <li key={s.msisdn_hash}>
@@ -349,7 +514,7 @@ export function AreaCard({
                 className={cn("flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-accent", trail?.hash === s.msisdn_hash && "bg-accent")}
               >
                 <span className="font-mono">{s.msisdn_hash.slice(0, 8)}</span>
-                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", LABEL_STYLE[s.latest_label] ?? "bg-muted")}>{s.latest_label}</span>
+                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", LABEL_STYLE[s.latest_label] ?? "bg-muted")}>{s.latest_label}</span>
                 <span className="truncate text-muted-foreground">{s.enodeb_name}</span>
                 <span className="ml-auto text-muted-foreground">{s.cell_changes_24h} moves</span>
               </button>
@@ -369,10 +534,10 @@ export function AreaCard({
       {want.has("usage") && apps?.apps.length ? (
         <section>
           <div className="mb-1 flex items-center justify-between">
-            <h3 className="text-[12px] font-semibold text-muted-foreground">
+            <h3 className="text-[12px] font-medium text-muted-foreground">
               What people use here{apps.busiest_hour != null ? ` — busiest at ${String(apps.busiest_hour).padStart(2, "0")}:00` : ""}
             </h3>
-            <div className="flex rounded-md border text-[11px]">
+            <div className="flex overflow-hidden rounded-full border text-[11px]">
               {(["users", "data"] as const).map((by) => (
                 <button
                   key={by}
@@ -381,7 +546,7 @@ export function AreaCard({
                     setRank(by);
                     void loadApps(p, by);
                   }}
-                  className={cn("px-2 py-0.5 capitalize", rank === by ? "bg-accent font-semibold" : "text-muted-foreground")}
+                  className={cn("px-2.5 py-0.5 capitalize", rank === by ? "bg-accent font-medium" : "text-muted-foreground")}
                 >
                   {by}
                 </button>
@@ -414,16 +579,25 @@ export function AreaCard({
             <div
               role="dialog"
               aria-label={`Trail of subscriber ${trail.hash.slice(0, 8)}`}
-              className="fixed right-4 bottom-10 z-[60] flex max-h-[60vh] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-xl border bg-background/95 p-3 font-sans text-foreground shadow-xl backdrop-blur"
+              className="fixed right-4 bottom-[19rem] z-[60] flex max-h-[calc(100vh-24rem)] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-2xl border bg-background/95 p-3 font-sans text-foreground shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] backdrop-blur"
             >
               <div className="flex items-center gap-1.5">
                 <Route className="size-3.5 text-muted-foreground" />
-                <h3 className="text-[13px] font-semibold">Trail of {trail.hash.slice(0, 8)}</h3>
+                <h3 className="text-[13px] font-medium">Trail of {trail.hash.slice(0, 8)}</h3>
                 <span className="text-[11px] text-muted-foreground">cells only, 24 h</span>
-                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                <button
+                  type="button"
+                  onClick={togglePlayback}
+                  aria-label={playing ? "Pause the trail playback" : "Play the trail"}
+                  className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />} {playing ? "Pause" : "Play"}
+                </button>
+                <button type="button" onClick={closeTrail} aria-label="Close the trail" className="rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                   <X className="size-3.5" />
                 </button>
               </div>
+              <p className="text-[11px] text-muted-foreground">Replays on the map with the time bar at the bottom: drag it, or change the speed there.</p>
               <ol className="flex flex-col gap-0.5 text-[12px]">
                 {trail.segments.map((s, i) => (
                   <li key={`${s.arrived_at}-${i}`} className="flex gap-2 rounded px-1.5 py-0.5">
@@ -435,11 +609,11 @@ export function AreaCard({
               </ol>
               {routines ? (
                 <div>
-                  <h4 className="mb-1 text-[12px] font-semibold text-muted-foreground">Routine (last 4 weeks)</h4>
+                  <h4 className="mb-1 text-[12px] font-medium text-muted-foreground">Routine (last 4 weeks)</h4>
                   <ul className="flex flex-col gap-1.5 text-[12px] leading-5">
                     {routines.map((r) => (
                       <li key={`${r.kind}-${r.tower}`} className="flex gap-2">
-                        <span className={cn("h-5 shrink-0 rounded px-1.5 text-[10px] font-semibold leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
+                        <span className={cn("h-5 shrink-0 rounded-full px-2 text-[10px] font-medium leading-5", ROUTINE_STYLE[r.kind].chip)}>{r.kind}</span>
                         <span>{r.sentence}</span>
                       </li>
                     ))}

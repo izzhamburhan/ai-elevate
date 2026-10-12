@@ -15,7 +15,14 @@ requested.
 
 Answer with cards where there is one. For any question about towers, people, trails or app usage in a place, town, district or
 radius, call show_area: it draws the place on the map and shows an interactive card, so do not list the towers yourself. To heal or fix a
-faulty tower, an outage or the flood incident, call run_self_heal. After a card, add one or two sentences at most.`;
+faulty tower, an outage or the flood incident, call run_self_heal. For a customer complaint, congestion, several sites degrading
+together, weather exposure of sites or maintenance advice, use the network intelligence tools (investigate_customer_complaint,
+analyze_network_congestion, correlate_network_incidents, assess_weather_network_exposure, recommend_network_maintenance): their result
+is shown as a card and drawn on the map. Present causes as plausible, with their evidence, never as proven. For forecasts (crowds or
+footfall, booth locations, site outage risk, congestion ahead, anomalies) use the predictive ML tools (predict_area_footfall,
+rank_business_locations, predict_site_failure_risk, forecast_network_congestion, detect_network_anomalies); give the numbers with their
+uncertainty and say they come from local models trained on synthetic data. A card already draws its result on the map, so do not
+redraw it or move the map afterwards. After a card, add one or two sentences at most.`;
 
 type CreateAgentOptions = {
   model: LanguageModel;

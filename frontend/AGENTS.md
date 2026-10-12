@@ -7,3 +7,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## UI and design
+
+Read `DESIGN.md` before building or changing any UI. It holds the design direction, the shared
+palette and tokens, the type scale, shapes, component recipes and a checklist for new UI. Use the
+tokens in `src/app/globals.css`; never hard-code hex values or Tailwind palette colors in
+components.

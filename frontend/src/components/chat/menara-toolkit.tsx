@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { AreaCard, type Section } from "@/components/map/panels/area-card";
 import { HealPanel } from "@/components/map/panels/heal-panel";
+import { INTEL_TOOLS, IntelCard, type IntelTool } from "@/components/map/panels/intel-card";
 import { pointInRing } from "@/lib/menara/geometry";
 
 /**
@@ -157,4 +158,31 @@ export const menaraToolkit = defineToolkit({
     },
     render: ({ result }) => (result ? <HealPanel runId={(result as { run_id?: string }).run_id} /> : <Working text="Starting the self-heal…" />),
   },
+
+  // Network intelligence (backend/netintel-mcp) runs on the server; these entries only draw its results as cards.
+  ...Object.fromEntries(
+    INTEL_TOOLS.map((name) => [
+      name,
+      {
+        type: "backend" as const,
+        display: "standalone" as const,
+        render: ({ result }: { result?: unknown }) => (result ? <IntelCard tool={name} result={result} /> : <Working text="Analysing the network…" />),
+      },
+    ]),
+  ),
+  // the same tools reached through BM25 search mode (run_all starts servers with --search)
+  ...Object.fromEntries(
+    ["netintel_call_tool", "mlpredict_call_tool"].map((caller) => [
+      caller,
+      {
+        type: "backend" as const,
+        display: "standalone" as const,
+        render: ({ args, result }: { args?: unknown; result?: unknown }) => {
+          const name = (args as { name?: string } | undefined)?.name;
+          if (!name || !(INTEL_TOOLS as readonly string[]).includes(name)) return null;
+          return result ? <IntelCard tool={name as IntelTool} result={result} /> : <Working text="Analysing the network…" />;
+        },
+      },
+    ]),
+  ),
 });

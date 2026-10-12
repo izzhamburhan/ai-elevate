@@ -200,11 +200,13 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
 
   return (
     <ThreadPrimitive.Root
-      className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
+      // transparent: the side panel behind it is frosted glass over the map (globals.css)
+      className="aui-root aui-thread-root @container flex h-full flex-col bg-transparent"
       style={{
         ["--thread-max-width" as string]: "44rem",
+        // opaque, so the map and scrolled messages don't show through what you type
         ["--composer-bg" as string]:
-          "color-mix(in oklab, var(--color-muted) 30%, transparent)",
+          "color-mix(in oklab, var(--color-muted) 30%, var(--color-background))",
         ["--composer-radius" as string]: "1rem",
         ["--composer-padding" as string]: "8px",
       }}
@@ -240,9 +242,12 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
 
           <ThreadPrimitive.ViewportFooter
             className={cn(
-              "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+              "aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+              // messages fade out over the 48px above the composer, then hide behind it. The fade
+              // spans the panel's full width and padding (the negative insets), so it has no edges
+              // against the glass.
               !isEmpty &&
-                "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+                "sticky bottom-0 mt-auto pt-4 before:pointer-events-none before:absolute before:-inset-x-4 before:-top-8 before:-bottom-4 before:-z-10 before:bg-[linear-gradient(to_top,var(--background)_calc(100%-48px),transparent)]",
             )}
           >
             <ThreadScrollToBottom />
@@ -467,6 +472,7 @@ const ThreadWelcome: FC = () => {
 const ThreadSuggestions: FC = () => {
   return (
     <div className="aui-thread-welcome-suggestions flex w-full flex-col">
+      <p className="px-2 pb-1 text-[11px] text-muted-foreground">Try an example</p>
       <ThreadPrimitive.Suggestions>
         {() => <ThreadSuggestionItem />}
       </ThreadPrimitive.Suggestions>
@@ -480,7 +486,7 @@ const ThreadSuggestionItem: FC = () => {
       <SuggestionPrimitive.Trigger send asChild>
         <button
           type="button"
-          className="aui-thread-welcome-suggestion group hover:bg-foreground/[0.03] focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-md px-2 py-2 text-start text-sm transition-colors outline-none focus-visible:ring-1 motion-reduce:transition-none"
+          className="aui-thread-welcome-suggestion group hover:bg-accent focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-lg px-2 py-2 text-start text-[13px] leading-snug transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none"
         >
           <span
             aria-hidden
@@ -488,7 +494,7 @@ const ThreadSuggestionItem: FC = () => {
           >
             {">"}
           </span>
-          <span className="min-w-0 flex-1 truncate">
+          <span className="min-w-0 flex-1">
             <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground" />{" "}
             <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
           </span>
@@ -583,7 +589,7 @@ const ComposerAction: FC = () => {
               tooltip="Send message"
               side="bottom"
               type="button"
-              variant="default"
+              variant="brand"
               size="icon"
               className="aui-composer-send size-7 rounded-full"
               aria-label="Send message"
@@ -619,7 +625,7 @@ const ComposerAction: FC = () => {
 const MessageError: FC = () => {
   return (
     <MessagePrimitive.Error>
-      <ErrorPrimitive.Root className="aui-message-error-root border-destructive bg-destructive/10 text-destructive dark:bg-destructive/5 mt-2 rounded-md border p-3 text-sm dark:text-red-200">
+      <ErrorPrimitive.Root className="aui-message-error-root border-destructive/40 bg-destructive/10 text-destructive mt-2 rounded-xl border p-3 text-sm">
         <ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>

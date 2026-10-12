@@ -1,0 +1,1 @@
+"""Network intelligence MCP: evidence-based investigations over NetOps data and its hourly synthetic extension."""
