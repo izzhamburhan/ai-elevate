@@ -76,7 +76,7 @@ Each figure states its condition, for example "only after the survey or upgrade 
 **Order 5:** if mlpredict-mcp (:8126) answers within 4 s, its `get_business_demand_signals` values are attached as supplementary context. They never change a class, rank or figure. When the service is not running, as on this Mac, the result says "Order 5 predictive service unavailable … graph-derived evidence used".
 
 **Demo:**
-- **George Town, verified gap:** 58% fibre-serviceable, 24 measurements showing good RSRP, so a fixed-wireless offer is feasible. RM 9,200–36,700 a month, indicative.
+- **George Town, verified gap:** 58% fibre-serviceable, 24 measurements showing good RSRP, so a fixed-wireless offer is feasible. RM 4,500–18,200 a month, indicative, identical to its Order 4 card because Order 4's own potential calculation is called.
 - **Miri, capacity constraint:** PRB p95 71.4%. A capacity study comes first.
 - **Tawau, missing information:** 0 measurements. Survey first; do not invest or market yet.
 

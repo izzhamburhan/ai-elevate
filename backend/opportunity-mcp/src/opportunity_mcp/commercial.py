@@ -11,7 +11,6 @@ TM revenue, cost or customer data; "exposure" and "indicative" values are not lo
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from datetime import timedelta
 from pathlib import Path
@@ -19,9 +18,8 @@ from typing import Any
 
 import duckdb
 
-from opportunity_mcp.graph import OpportunityGraph
-from opportunity_mcp.rank import ASSUMPTIONS as ORDER4_ASSUMPTIONS
-from opportunity_mcp.rank import area_signals, discover
+from opportunity_mcp.graph import OpportunityGraph, _rows
+from opportunity_mcp.rank import _km, _potential, area_signals, discover
 
 WINDOW_DAYS = 60
 
@@ -79,18 +77,6 @@ PACKAGES = {
                      "items": [("Reserved uplink engineering", 6_000), ("On-site media engineer", 2_000), ("Temporary fibre or microwave hop", 7_500)],
                      "description": "A 200 Mbps uplink for broadcast crews from a fibre-backhauled site next to the venue."},
 }
-
-
-def _rows(con: duckdb.DuckDBPyConnection, sql: str, *params: Any) -> list[dict[str, Any]]:
-    cursor = con.execute(sql, list(params))
-    names = [c[0] for c in cursor.description]
-    return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
-
-
-def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
-    return 6371.0 * 2 * math.asin(math.sqrt(a))
 
 
 def _rm(value: float) -> int:
@@ -245,11 +231,10 @@ def absence_gaps(og: OpportunityGraph, intel_db: Path | None = None, predictive:
     for rank, r in enumerate(chosen, start=1):
         s, cls = r["signals"], r["primary_class"]
         kind = "sme_fwa" if cls != "capacity_constraint" else "sme_fibre"
-        a = ORDER4_ASSUMPTIONS[kind]
+        # the exact Order 4 commercial-potential calculation, not a re-implementation
+        potential = _potential(kind, s)
+        low, high = potential["indicative_monthly_recurring_rm"]
         unserved = s["sme_count"] * (1 - s["tm_business_penetration_pct"] / 100)
-        share = (1 - s["fibre_serviceable_pct"] / 100) if kind == "sme_fwa" else s["fibre_serviceable_pct"] / 100
-        addressable = unserved * share
-        low, high = addressable * a["take_up_pct"][0] / 100 * a["arpu_rm_month"][0], addressable * a["take_up_pct"][1] / 100 * a["arpu_rm_month"][1]
         why = [f"{s['sme_count']:,} SMEs (synthetic), ~{unserved:,.0f} not on TM business broadband; {s['broadband_enquiries_90d']} enquiries in 90 days.",
                f"Evening footfall {s['evening_footfall_mean']:,.0f}/hour; demand percentile {r['demand_percentile']:.0%} of 38 areas (synthetic)."]
         constraint = {"verified_gap": f"Only {s['fibre_serviceable_pct']:.0f}% of SME premises are fibre-serviceable (synthetic serviceability records, {r['evidence']['signal_measurements']} signal measurements).",
@@ -258,8 +243,8 @@ def absence_gaps(og: OpportunityGraph, intel_db: Path | None = None, predictive:
         results.append({"rank": rank, "area_id": r["area_id"], "area": s["name"], "cluster": s["cluster"], "state": s["state"], "lat": s["lat"], "lng": s["lng"],
                         "classification": cls, "classification_label": labels[cls], "all_classes": r["classes"], "why_it_matters": why,
                         "technical_constraint": constraint, "evidence": r["evidence"], "recommended_action": actions[cls],
-                        "indicative_opportunity_rm_month": {"low": _rm(low), "high": _rm(high), "addressable_smes": round(addressable),
-                                                            "basis": f"Order 4 {kind} assumptions: take-up {a['take_up_pct'][0]}-{a['take_up_pct'][1]}%, ARPU RM {a['arpu_rm_month'][0]}-{a['arpu_rm_month'][1]}",
+                        "indicative_opportunity_rm_month": {"low": _rm(low), "high": _rm(high), "addressable_smes": potential["addressable"],
+                                                            "basis": f"Order 4 {kind} assumptions: take-up {potential['take_up_pct_assumed'][0]}-{potential['take_up_pct_assumed'][1]}%, ARPU RM {potential['arpu_rm_month_assumed'][0]}-{potential['arpu_rm_month_assumed'][1]}",
                                                             "condition": "only after the survey or upgrade confirms serviceability" if cls != "verified_gap" else "fixed-wireless offer where radio serviceability is confirmed"},
                         "predictive_context": (predictive or {}).get(r["area_id"])})
         features.append(_point(s["lng"], s["lat"], id=r["area_id"], kind=f"absence_{cls}", rank=rank, area=s["name"], classification=labels[cls]))

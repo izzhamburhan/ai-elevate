@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from opportunity_mcp import commercial, graph, predictive
+from opportunity_mcp import commercial, graph, predictive, rank
 
 
 @pytest.fixture()
@@ -50,6 +50,10 @@ def test_absence_never_treats_missing_data_as_a_verified_gap(og, built):
             assert not measured and "unverified, not absent" in r["technical_constraint"]
             assert "Survey first" in r["recommended_action"]
         assert r["indicative_opportunity_rm_month"]["low"] <= r["indicative_opportunity_rm_month"]["high"]
+        # identical to the Order 4 calculation for the same area (no divergent re-implementation)
+        kind = "sme_fibre" if r["classification"] == "capacity_constraint" else "sme_fwa"
+        assert [r["indicative_opportunity_rm_month"]["low"], r["indicative_opportunity_rm_month"]["high"]] == \
+            rank._potential(kind, rank.area_signals(og)[r["area_id"]])["indicative_monthly_recurring_rm"]
     assert result["predictive_service"]["available"] is False
 
 
