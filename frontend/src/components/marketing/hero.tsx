@@ -1,23 +1,36 @@
 import { ArrowRight } from "lucide-react";
 
-import { HeroArt } from "./hero-art";
+import { HeroBackdrop, hasHeroPhoto } from "./hero-backdrop";
 import { HeroDemo } from "./hero-demo";
 import { LiquidArt } from "./liquid-art";
 import { PillLink } from "./primitives";
 
-/** Full-bleed cinematic hero: art behind, serif headline bottom-left, demo card bottom-right. */
+/**
+ * The art's box. A photo fills the hero and crops itself (object-position); the generated city is
+ * right-anchored and wider on small screens so the city stays in frame.
+ */
+const PHOTO_BOX = "mk-drift absolute inset-0 h-full w-full";
+const SVG_BOX = "mk-drift absolute inset-y-0 right-0 h-full w-[220%] max-w-none sm:w-[150%] lg:w-full";
+
+/**
+ * Full-bleed cinematic hero: art behind, serif headline bottom-left, demo card bottom-right.
+ * Layers, back to front: art (with the liquid warp), grain, scrims, content, oil-slick sheen.
+ * It is 7.5rem shorter than the screen so the "Built on" strip (ToolsBand, 7.5rem) shows below it,
+ * like Ideogram's logo row; keep the two numbers in step.
+ */
 export function Hero() {
+  const photo = hasHeroPhoto();
+  const box = photo ? PHOTO_BOX : SVG_BOX;
   return (
     <section
       id="top"
       aria-labelledby="hero-title"
-      className="mk-dark relative isolate flex h-[100svh] min-h-[640px] max-h-[1000px] items-end overflow-hidden bg-mk-bg"
+      className="mk-dark relative isolate flex h-[calc(100svh-7.5rem)] min-h-[560px] max-h-[900px] items-end overflow-hidden bg-mk-bg"
     >
-      <div className="mk-grain absolute inset-0 -z-10">
-        <LiquidArt className="mk-drift absolute inset-y-0 right-0 h-full w-[220%] max-w-none sm:w-[150%] lg:w-full">
-          <HeroArt className="absolute inset-0 h-full w-full" />
-        </LiquidArt>
-      </div>
+      <LiquidArt className={`${box} -z-10`} overlayClassName={`${box} z-10`}>
+        <HeroBackdrop uid="hero" priority className="absolute inset-0 h-full w-full" />
+      </LiquidArt>
+      <div aria-hidden="true" className="mk-grain absolute inset-0 -z-10" />
       {/* Scrims: top for the nav, bottom and left for the headline and copy. */}
       <div aria-hidden="true" className="absolute inset-x-0 top-0 -z-10 h-40 bg-linear-to-b from-black/55 to-transparent" />
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[linear-gradient(to_top,rgba(4,5,9,0.92)_0%,rgba(4,5,9,0.55)_30%,transparent_60%)]" />

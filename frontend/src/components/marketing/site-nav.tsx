@@ -37,7 +37,7 @@ export function SiteNav() {
         </ul>
 
         <div className="flex items-center gap-2">
-          <a href="/workspace" className="hidden rounded-full px-3 py-2 text-[15px] text-mk-fg sm:inline-flex">
+          <a href="/sign-in" className="hidden rounded-full px-3 py-2 text-[15px] text-mk-fg sm:inline-flex">
             Sign in
           </a>
           <PillLink href="/workspace" variant="brand">
@@ -66,7 +66,7 @@ export function SiteNav() {
             </li>
           ))}
           <li className="sm:hidden">
-            <a href="/workspace" className="block rounded-lg px-2 py-3 text-base text-mk-muted hover:bg-mk-fg/[0.05]">
+            <a href="/sign-in" className="block rounded-lg px-2 py-3 text-base text-mk-muted hover:bg-mk-fg/[0.05]">
               Sign in
             </a>
           </li>

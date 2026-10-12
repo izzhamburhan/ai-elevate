@@ -35,7 +35,7 @@ import {
 
 import { ApprovalCard } from "./approval-card";
 import { AreaDemo } from "./area-demo";
-import { HeroArt } from "./hero-art";
+import { HeroBackdrop } from "./hero-backdrop";
 import { LiquidArt } from "./liquid-art";
 import { MapArt } from "./map-art";
 import { PillLink, SectionHeading, Wordmark } from "./primitives";
@@ -296,7 +296,10 @@ export function SafetyBand() {
 /* Tools band, CTA, footer                                                                    */
 /* ----------------------------------------------------------------------------------------- */
 
-/** Light band under the hero, where Ideogram lists customers. We list the open tools Elevate runs on. */
+/**
+ * Light strip under the hero, where Ideogram lists customers; we list the open tools Elevate runs on.
+ * On wide screens it is exactly 7.5rem tall, the space the hero leaves free in the first screen.
+ */
 export function ToolsBand() {
   const tools = [
     { name: "kepler.gl", className: "font-semibold tracking-tight" },
@@ -308,10 +311,10 @@ export function ToolsBand() {
     { name: "Ollama", className: "font-display text-xl italic" },
   ];
   return (
-    <section aria-label="Built on" className="border-b border-mk-line px-4 py-10 sm:px-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-center lg:gap-14">
+    <section aria-label="Built on" className="flex items-center border-b border-mk-line px-4 py-8 sm:px-6 lg:h-[7.5rem] lg:py-0">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 lg:flex-row lg:items-center lg:gap-14">
         <p className="max-w-[16rem] shrink-0 text-[15px] leading-snug text-mk-fg">Built on open tools and the models you already use</p>
-        <ul className="flex flex-wrap items-center gap-x-10 gap-y-4 text-lg text-mk-fg/75">
+        <ul className="flex flex-wrap items-center gap-x-10 gap-y-3 text-lg text-mk-fg/75">
           {tools.map((t) => (
             <li key={t.name} className={t.className}>
               {t.name}
@@ -328,7 +331,7 @@ export function CtaBand() {
     <section aria-labelledby="cta-title" className="mk-dark relative isolate overflow-hidden bg-mk-bg px-4 py-28 text-center sm:px-6 lg:py-40">
       <div className="mk-grain absolute inset-0 -z-10">
         <LiquidArt className="absolute inset-0">
-          <HeroArt uid="cta-art" className="absolute inset-0 h-full w-full" />
+          <HeroBackdrop uid="cta-art" className="absolute inset-0 h-full w-full" />
         </LiquidArt>
       </div>
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(60%_70%_at_50%_45%,rgba(4,5,9,0.78),rgba(4,5,9,0.35))]" />
@@ -370,6 +373,8 @@ const FOOTER_COLUMNS: { title: string; links: { label: string; href?: string }[]
     title: "Resources",
     links: [
       { label: "Workspace", href: "/workspace" },
+      { label: "Sign in", href: "/sign-in" },
+      { label: "Create an account", href: "/sign-up" },
       { label: "FAQ", href: "#faq" },
     ],
   },

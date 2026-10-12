@@ -3,13 +3,15 @@ import { rng, type Pt } from "./map-art";
 /*
  * Cinematic hero scene, standing in for Ideogram's full-bleed photography: a city at night in a
  * storm, seen at a low pitch like kepler.gl's 3D view. Extruded hex cells rise from the plane, a
- * flooded river cuts through, and arcs link the tallest towers. Pure SVG from a seed.
+ * flooded river cuts through, telecom masts on the tallest towers are linked by arcs, and storm
+ * clouds light up with a distant flash. Pure SVG from a seed. A photo can replace it: see
+ * hero-backdrop.tsx.
  */
 
 const W = 1600;
 const H = 1000;
-const HORIZON = 430;
-const FOCAL = 560;
+const HORIZON = 360;
+const FOCAL = 600;
 const CAM_Y = 1.5;
 const FOG = [11, 14, 30] as const;
 
@@ -38,7 +40,7 @@ function color(t: number, shade: number, fog: number) {
 
 // City cores sit right of centre, leaving the left side calm for the headline.
 const CLUSTERS = [
-  { x: 2.9, z: 5.2, r: 1.5, k: 1.15 },
+  { x: 2.9, z: 4.7, r: 1.5, k: 1.15 },
   { x: 5.6, z: 8.8, r: 2, k: 0.9 },
   { x: 0.8, z: 11, r: 2.6, k: 0.7 },
   { x: 4.2, z: 3.2, r: 0.7, k: 0.6 },
@@ -76,7 +78,7 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
   }
   cells.sort((a, b) => b.x * b.x + b.z * b.z - (a.x * a.x + a.z * a.z));
 
-  const tops: { p: Pt; height: number }[] = [];
+  const tops: { x: number; z: number; height: number }[] = [];
   const prisms = cells.map((c, idx) => {
     const height = c.t ** 1.6 * 2.1 + 0.04;
     const fog = Math.min(0.85, Math.max(0, (c.z - 2.5) / 15) ** 1.1);
@@ -102,8 +104,7 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
         />
       );
     });
-    const top = project(c.x, height, c.z);
-    if (c.z < 11) tops.push({ p: top, height });
+    if (c.z < 11) tops.push({ x: c.x, z: c.z, height });
 
     // Lit floors on the tall near towers: one dashed stroke per floor, per visible face.
     let windows = "";
@@ -158,12 +159,30 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
     grid.push(`M${Math.round(ax)},${Math.round(ay)}H${Math.round(bx)}`);
   }
 
-  // Arcs between the tallest near towers, left to right.
-  const arcTops = [...tops]
+  // Telecom masts on the tallest near towers (spaced apart on screen), linked left to right by arcs.
+  const masts = [...tops]
     .sort((a, b) => b.height - a.height)
-    .map((t) => t.p)
-    .reduce<Pt[]>((kept, p) => (kept.length < 7 && kept.every((k) => Math.abs(k[0] - p[0]) > 110) ? [...kept, p] : kept), [])
-    .sort((a, b) => a[0] - b[0]);
+    .reduce<typeof tops>((kept, t) => {
+      const sx = project(t.x, t.height, t.z)[0];
+      return kept.length < 6 && kept.every((k) => Math.abs(project(k.x, k.height, k.z)[0] - sx) > 120) ? [...kept, t] : kept;
+    }, [])
+    .map((t) => {
+      const mastH = 0.55;
+      const halfW = 0.06;
+      const [bx1, by] = project(t.x - halfW, t.height, t.z);
+      const [bx2] = project(t.x + halfW, t.height, t.z);
+      const tip = project(t.x, t.height + mastH, t.z);
+      // A-frame lattice: two legs, three cross struts, a red warning light on top.
+      let d = `M${Math.round(bx1)},${Math.round(by)}L${Math.round(tip[0])},${Math.round(tip[1])}L${Math.round(bx2)},${Math.round(by)}`;
+      for (const k of [0.25, 0.5, 0.75]) {
+        const y = by + (tip[1] - by) * k;
+        const half = ((bx2 - bx1) / 2) * (1 - k);
+        d += `M${Math.round(tip[0] - half)},${Math.round(y)}L${Math.round(tip[0] + half)},${Math.round(y)}`;
+      }
+      return { d, tip, z: t.z };
+    })
+    .sort((a, b) => a.tip[0] - b.tip[0]);
+  const arcTops = masts.map((m) => m.tip);
   const arcs = arcTops.slice(1).map((b, i) => {
     const a = arcTops[i];
     const lift = 50 + Math.abs(a[0] - b[0]) * 0.45;
@@ -192,21 +211,20 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
     }),
   ).filter((l) => l !== null);
 
-  // Forked lightning over the far city.
-  const bolt: Pt[] = [[1180, 40]];
-  for (let i = 0; i < 9; i++) bolt.push([bolt[i][0] + (r() - 0.45) * 46, bolt[i][1] + 26 + r() * 18]);
-  const fork: Pt[] = [bolt[4]];
-  for (let i = 0; i < 4; i++) fork.push([fork[i][0] + 18 + r() * 22, fork[i][1] + 18 + r() * 14]);
+  // A faint, distant bolt that mostly hides behind the cloud deck; the flash does the work.
+  const bolt: Pt[] = [[1230, 70]];
+  for (let i = 0; i < 7; i++) bolt.push([bolt[i][0] + (r() - 0.45) * 30, bolt[i][1] + 24 + r() * 14]);
   const line = (p: Pt[]) => p.map(([x, y], i) => `${i ? "L" : "M"}${Math.round(x)},${Math.round(y)}`).join("");
+  const hz = HORIZON / H;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" className={className} aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id={`${uid}-sky`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#04050a" />
-          <stop offset="0.38" stopColor="#0d1124" />
-          <stop offset="0.45" stopColor="#1a1436" />
-          <stop offset="0.6" stopColor="#090b16" />
+          <stop offset={hz - 0.06} stopColor="#0d1124" />
+          <stop offset={hz + 0.01} stopColor="#1a1436" />
+          <stop offset={hz + 0.16} stopColor="#090b16" />
           <stop offset="1" stopColor="#050609" />
         </linearGradient>
         <radialGradient id={`${uid}-dome`} cx="0.5" cy="0.5" r="0.5">
@@ -223,10 +241,28 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
           <stop offset="1" stopColor="#6fd8ff" />
         </linearGradient>
         <linearGradient id={`${uid}-fog`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0.38" stopColor="#0b0e1e" stopOpacity="0" />
-          <stop offset="0.44" stopColor="#141029" stopOpacity="0.85" />
-          <stop offset="0.6" stopColor="#0b0e1e" stopOpacity="0" />
+          <stop offset={hz - 0.06} stopColor="#0b0e1e" stopOpacity="0" />
+          <stop offset={hz} stopColor="#141029" stopOpacity="0.85" />
+          <stop offset={hz + 0.15} stopColor="#0b0e1e" stopOpacity="0" />
         </linearGradient>
+        {/* Storm clouds: fractal noise turned into a soft, lavender-grey alpha. */}
+        <filter id={`${uid}-clouds`} x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.0028 0.009" numOctaves="4" seed="11" />
+          <feColorMatrix type="matrix" values="0 0 0 0 0.42  0 0 0 0 0.39  0 0 0 0 0.58  1.9 0 0 0 -0.72" />
+        </filter>
+        <linearGradient id={`${uid}-cloudfade`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.5" />
+          <stop offset="0.55" stopColor="#fff" stopOpacity="1" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id={`${uid}-cloudmask`} maskUnits="userSpaceOnUse" x="0" y="0" width={W} height={HORIZON + 40}>
+          <rect width={W} height={HORIZON + 40} fill={`url(#${uid}-cloudfade)`} />
+        </mask>
+        <radialGradient id={`${uid}-flash`}>
+          <stop offset="0" stopColor="#f1e9ff" stopOpacity="0.55" />
+          <stop offset="0.45" stopColor="#bd9fff" stopOpacity="0.18" />
+          <stop offset="1" stopColor="#bd9fff" stopOpacity="0" />
+        </radialGradient>
         <filter id={`${uid}-glow`} x="-10%" y="-10%" width="120%" height="120%">
           <feGaussianBlur stdDeviation="5" result="b" />
           <feMerge>
@@ -241,10 +277,9 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
         <circle key={i} cx={Math.round(x)} cy={Math.round(y)} r={o > 0.9 ? 1.4 : 0.8} fill="#fff" opacity={0.15 + o * 0.35} />
       ))}
       <ellipse cx={W / 2 + 60} cy={HORIZON + 10} rx={980} ry={240} fill={`url(#${uid}-dome)`} />
-      <g fill="none" stroke="#efe9ff" strokeLinejoin="round" filter={`url(#${uid}-glow)`} opacity={0.45}>
-        <path d={line(bolt)} strokeWidth={2} />
-        <path d={line(fork)} strokeWidth={1.1} />
-      </g>
+      <path d={line(bolt)} fill="none" stroke="#efe9ff" strokeWidth={1.3} strokeLinejoin="round" filter={`url(#${uid}-glow)`} opacity={0.3} />
+      <rect width={W} height={HORIZON + 40} filter={`url(#${uid}-clouds)`} mask={`url(#${uid}-cloudmask)`} opacity={0.6} />
+      <ellipse cx={1230} cy={120} rx={300} ry={130} fill={`url(#${uid}-flash)`} style={{ mixBlendMode: "screen" }} />
 
       <path d={grid.join("")} stroke="#bd9fff" strokeOpacity={0.07} strokeWidth={1} fill="none" />
       <path d={river} fill={`url(#${uid}-river)`} filter={`url(#${uid}-glow)`} />
@@ -256,12 +291,18 @@ export function HeroArt({ className, uid = "hero" }: { className?: string; uid?:
 
       <g filter={`url(#${uid}-glow)`}>{prisms}</g>
 
+      <g fill="none" stroke="#cfc3ea" strokeWidth={1.1} strokeOpacity={0.75}>
+        {masts.map((m, i) => (
+          <path key={i} d={m.d} />
+        ))}
+      </g>
+
       <g fill="none" filter={`url(#${uid}-glow)`}>
         {arcs.map((d, i) => (
           <path key={i} d={d} stroke={`url(#${uid}-arc)`} strokeWidth={1.6} strokeOpacity={0.85} strokeLinecap="round" />
         ))}
         {arcTops.map(([x, y], i) => (
-          <circle key={i} cx={Math.round(x)} cy={Math.round(y)} r={3} fill="#f3eaff" />
+          <circle key={i} cx={Math.round(x)} cy={Math.round(y)} r={3} fill="#ff4d5e" />
         ))}
       </g>
 
