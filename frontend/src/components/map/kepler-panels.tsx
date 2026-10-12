@@ -66,9 +66,10 @@ function ElevateSidePanelFactory(...deps: Parameters<typeof SidePanelFactory>) {
     const { isFullscreen } = useChatFullscreen();
     return (
       <>
-        {/* the full-width panel still leaves its margins over the map; cover it entirely,
-            just under the side panel (z-index 99) */}
-        {isFullscreen ? <div className="absolute inset-0 bg-background" style={{ zIndex: 98 }} /> : null}
+        {/* the full-width panel is glass like the regular one (globals.css), so the map shows
+            through it; this transparent layer just under it (z-index 99) only stops the map in
+            its margins from being dragged while the chat is full width */}
+        {isFullscreen ? <div className="absolute inset-0" style={{ zIndex: 98 }} /> : null}
         <SidePanel {...props} panels={panels} />
       </>
     );
@@ -100,7 +101,9 @@ function ElevateCollapseButtonFactory() {
         type="button"
         onClick={onClick}
         aria-label={isOpen ? "Close panel" : "Open panel"}
-        className="side-bar__close absolute top-3 left-full grid size-7 -translate-x-1 place-items-center rounded-lg border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+        // on phones the panel leaves only a strip of map, where kepler's map controls sit at the
+        // top; move the button to the bottom of the strip so it doesn't cover them
+        className="side-bar__close absolute top-3 left-full grid size-7 -translate-x-1 place-items-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-sm:top-auto max-sm:bottom-16"
       >
         <ChevronLeft className={isOpen ? "size-4" : "size-4 rotate-180"} />
       </button>

@@ -1,54 +1,57 @@
 import { theme as themeDK, themeLT } from "@kepler.gl/styles";
 
 /**
- * kepler.gl theme mapped onto the app's design tokens (see globals.css).
+ * kepler.gl theme mapped onto the app's design tokens (the palette in globals.css).
  * kepler renders with styled-components, so it needs literal values rather
  * than CSS variables for anything it runs through color math.
  */
 const lightTokens = {
-  ink: "#232425",
-  inkSoft: "#4a4b50",
-  muted: "#6f6f76",
-  line: "#e2e2e4",
+  ink: "#1f1b2d",
+  inkSoft: "#3c384b",
+  muted: "#59566a",
+  line: "#e6e5ea",
   surface: "#ffffff",
-  subtle: "#f7f7f8",
-  hover: "#f1f1f2",
-  pressed: "#e8e8ea",
+  subtle: "#f6f5f8",
+  hover: "#f0eff1",
+  pressed: "#e6e4ea",
   brand: "#bd9fff",
-  brandHover: "#ae8cff",
-  brandForeground: "#272038",
+  brandHover: "#cdb6ff",
+  brandForeground: "#1b1528",
   brandSoft: "#efe9ff",
-  brandStrong: "#7c5cff",
-  primaryHover: "#3a3b3e",
+  brandStrong: "#6d4aff",
+  primaryHover: "#3a3549",
   primaryActive: "#000000",
-  font: "var(--font-sans), Manrope, ui-sans-serif, system-ui, sans-serif",
+  font: "var(--font-sans), Inter, ui-sans-serif, system-ui, sans-serif",
   radius: "10px",
   shadow:
-    "0 4px 12px -2px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 1px #e2e2e4",
+    "0 4px 12px -2px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 1px #e6e5ea",
 };
 
 type Tokens = typeof lightTokens;
 
-/** Mirrors the `.dark` tokens in globals.css (hairlines flattened to opaque hex for color math). */
+/**
+ * Mirrors the `.dark` tokens in globals.css (hairlines flattened to opaque hex for color math).
+ * The panel itself is night, like the page; the cards inside it are the raised night surfaces.
+ */
 const darkTokens: Tokens = {
-  ink: "#ededee",
-  inkSoft: "#c4c4ca",
-  muted: "#a1a1a8",
-  line: "#2e2e33",
-  surface: "#18181b",
-  subtle: "#1f1f23",
-  hover: "#26262a",
-  pressed: "#303035",
+  ink: "#fafafa",
+  inkSoft: "#d6d4dd",
+  muted: "#b3b0bf",
+  line: "#2c2934",
+  surface: "#14111d",
+  subtle: "#1c1927",
+  hover: "#25212f",
+  pressed: "#2e2a39",
   brand: "#bd9fff",
-  brandHover: "#cbb4ff",
+  brandHover: "#cdb6ff",
   brandForeground: "#1b1528",
   brandSoft: "#2a2140",
-  brandStrong: "#a98bff",
-  primaryHover: "#d4d4d8",
+  brandStrong: "#b79bff",
+  primaryHover: "#e4e2ea",
   primaryActive: "#ffffff",
   font: lightTokens.font,
   radius: lightTokens.radius,
-  shadow: "0 4px 12px -2px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px #2e2e33",
+  shadow: "0 4px 12px -2px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px #2c2934",
 };
 
 const makeKeplerTheme = (base: typeof themeLT, tokens: Tokens) => ({
@@ -86,6 +89,9 @@ const makeKeplerTheme = (base: typeof themeLT, tokens: Tokens) => ({
   mapPanelBackgroundColor: tokens.surface,
   mapPanelHeaderBackgroundColor: tokens.subtle,
   bottomWidgetBgd: tokens.surface,
+  // panel titles ("Layers", "Base map") at the panel-title size; weight and tracking are set in
+  // globals.css, since kepler hard-codes them
+  sidePanelTitleFontsize: "18px",
   chickletBgd: tokens.hover,
   boxShadow: tokens.shadow,
   borderRadius: "8px",
@@ -124,7 +130,8 @@ const makeKeplerTheme = (base: typeof themeLT, tokens: Tokens) => ({
   primaryBtnBgdHover: tokens.primaryHover,
   primaryBtnColor: tokens.surface,
   primaryBtnActColor: tokens.surface,
-  primaryBtnRadius: tokens.radius,
+  // pill buttons, as on the site
+  primaryBtnRadius: "999px",
   secondaryBtnBgd: tokens.hover,
   secondaryBtnActBgd: tokens.pressed,
   secondaryBtnBgdHover: tokens.pressed,
@@ -143,6 +150,8 @@ const makeKeplerTheme = (base: typeof themeLT, tokens: Tokens) => ({
   floatingBtnActColor: tokens.ink,
   floatingBtnBorder: `1px solid ${tokens.line}`,
   floatingBtnBorderHover: `1px solid ${tokens.line}`,
+  // map controls get the icon-tile radius, like the zoom group in the site's workspace mock
+  floatingBtnRadius: tokens.radius,
   sideBarCloseBtnBgd: tokens.surface,
   sideBarCloseBtnColor: tokens.ink,
   sideBarCloseBtnBgdHover: tokens.hover,

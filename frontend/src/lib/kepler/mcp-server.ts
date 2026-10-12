@@ -187,8 +187,9 @@ const TOOLS: {
     command: "set_basemap",
     title: "Change basemap",
     description:
-      'Change the basemap style. Available without a Mapbox token: "positron" (light), "dark-matter" ' +
-      '(dark), "voyager" (streets), "no_map" (none). kepler_get_map_state lists every style id.',
+      'Change the basemap style. Available without a Mapbox token: "elevate-light" and "elevate-dark" (the ' +
+      'app\'s OpenStreetMap basemaps), "positron" (light), "dark-matter" (dark), "voyager" (streets), "no_map" ' +
+      '(none). kepler_get_map_state lists every style id.',
     inputSchema: { styleId: z.string() },
   },
   {

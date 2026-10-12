@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AssistantRuntimeProvider, AuiConfig, Tools, useRemoteThreadListRuntime } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, AuiConfig, Suggestions, Tools, useRemoteThreadListRuntime } from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/ai-sdk";
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 
@@ -13,6 +13,7 @@ import { menaraToolkit } from "@/components/chat/menara-toolkit";
 import { ConnectorsMenu } from "@/components/connectors/connectors-menu";
 import { enabledConnectorRequests } from "@/components/connectors/connectors-store";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
+import { EXAMPLE_PROMPTS } from "@/lib/example-prompts";
 import { weatherDemoChatModel } from "@/lib/weather/demo";
 
 /**
@@ -21,8 +22,14 @@ import { weatherDemoChatModel } from "@/lib/weather/demo";
  */
 const CHAT_API_URL = process.env.NEXT_PUBLIC_CHAT_API_URL ?? "/api/chat";
 
-/** Chat tools whose results render as cards in the answer (Map & area, Self-heal). */
-const toolsConfig = AuiConfig({ tools: Tools({ toolkit: menaraToolkit }) });
+/**
+ * Chat tools whose results render as cards in the answer (Map & area, Self-heal), and the example
+ * prompts an empty chat offers (the same ones as the landing page's Ask section).
+ */
+const toolsConfig = AuiConfig({
+  tools: Tools({ toolkit: menaraToolkit }),
+  suggestions: Suggestions([...EXAMPLE_PROMPTS]),
+});
 
 type ModelContextValue = {
   modelId: string;
@@ -105,12 +112,16 @@ function ChatModelPicker() {
   );
 }
 
+/** Empty chat: headline and hint above the composer; the example prompts render below it. */
 function AssistantWelcome() {
   return (
-    <p className="mb-4 px-2 text-[13px] leading-5 text-muted-foreground">
-      Describe what you&apos;d like to map — e.g. “Show the 10 most populated cities as a
-      heatmap”.
-    </p>
+    <div className="mb-4 flex flex-col gap-1.5 px-2">
+      <h2 className="text-2xl font-medium tracking-[-0.025em]">What will you map?</h2>
+      <p className="text-[13px] leading-5 text-muted-foreground">
+        Ask in plain words about a place, a tower or an incident. The answer comes back as a live
+        map.
+      </p>
+    </div>
   );
 }
 
@@ -137,12 +148,9 @@ const threadComponents = {
 /** Chat panel rendered as a tab inside kepler.gl's side panel. */
 export function AssistantPanel() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 font-sans text-foreground">
-      {/* the thread's 44rem column minus its px-4, so it lines up when the chat is full width */}
-      <h2 className="mx-auto w-full max-w-[42rem] truncate text-base font-bold tracking-tight">
-        What will you map?
-      </h2>
-
+    <div className="flex min-h-0 flex-1 flex-col font-sans text-foreground">
+      {/* the headline lives in the thread's welcome, so it sits in the thread's column (also when
+          the chat is full width) and gives way to the messages once the chat starts */}
       <div className="-mx-4 min-h-0 flex-1">
         <Thread components={threadComponents} />
       </div>

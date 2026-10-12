@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Manrope } from "next/font/google";
+import { Geist_Mono, Inter, Newsreader } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
-const manrope = Manrope({
+/** Shared with the marketing site: Inter for UI and body text, Newsreader for the wordmark and display type. */
+const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+});
+
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 const geistMono = Geist_Mono({
@@ -23,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
       // themeInitScript adds the `dark` class before hydration
       suppressHydrationWarning
     >

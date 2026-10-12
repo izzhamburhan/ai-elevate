@@ -12,6 +12,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Clean installation was verified with Node 22.23.2 / npm 10.9.8. Keep the project `.npmrc`: the existing React 19/Kepler dependency graph uses legacy peer resolution. The required map adapter is explicitly pinned to the existing `@deck.gl/mapbox@9.3.11`; the lock repair changes no retained package versions. Existing upstream peer-range conflicts remain a hackathon dependency limitation.
 
+## Design
+
+The site and the workspace share one design system. See [DESIGN.md](DESIGN.md) for the direction,
+tokens, type scale and component recipes.
+
 ## AI chat assistant
 
 Built with [assistant-ui](https://www.assistant-ui.com/) on the [AI SDK](https://ai-sdk.dev/) (`ai@7`).

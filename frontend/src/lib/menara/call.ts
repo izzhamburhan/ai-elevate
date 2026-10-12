@@ -42,9 +42,14 @@ async function drop(url: string) {
 
 async function callOnce(url: string, label: string, tool: string, args: Record<string, unknown>): Promise<Envelope> {
   const { tools } = await connect(url, label);
-  const found = tools[tool];
+  // servers started with --search (the default in backend/run_all.py) list only <name>_search_tools and
+  // <name>_call_tool; reach the real tool through that call proxy
+  const direct = tools[tool];
+  const proxy = direct ? undefined : Object.entries(tools).find(([name]) => name.endsWith("_call_tool"))?.[1];
+  const found = direct ?? proxy;
   if (!found?.execute) throw new MenaraCallError(`${label} MCP has no tool "${tool}".`);
-  const result = (await found.execute(args, { toolCallId: crypto.randomUUID(), messages: [], context: {} })) as {
+  const input = direct ? args : { name: tool, arguments: args };
+  const result = (await found.execute(input, { toolCallId: crypto.randomUUID(), messages: [], context: {} })) as {
     content?: { type: string; text?: string }[];
     structuredContent?: Envelope;
     isError?: boolean;

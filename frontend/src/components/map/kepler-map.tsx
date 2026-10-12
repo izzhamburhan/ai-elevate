@@ -13,6 +13,7 @@ import { ChatMapSync } from "./chat-map-sync";
 import { keplerDarkTheme, keplerLightTheme } from "./kepler-theme";
 import { BASEMAP_FOR_THEME, MAP_ID, makeKeplerStore } from "./kepler-store";
 import { ChatProvider } from "./panels/assistant-panel";
+import { TowerPulse } from "./tower-pulse";
 import { useKeplerBridge } from "./use-kepler-bridge";
 import { runKeplerCommand } from "@/lib/kepler/commands";
 import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
@@ -20,6 +21,8 @@ import { WEATHER_DEMO_MODE } from "@/lib/weather/demo";
 const SIDE_PANEL_WIDTH = 400;
 /** kepler pads the panel by this on both sides (see `kepler-theme.ts`). */
 const SIDE_PANEL_MARGIN = keplerLightTheme.sidePanel.margin.left;
+/** Map left visible beside a narrow-screen panel, so its close button (and some map) stays on screen. */
+const COLLAPSE_GUTTER = 40;
 const DEMO_GEOGRAPHY_URL = "/data/weather-demo-outline.geojson";
 
 /** Local, coarse Natural Earth context replaces remote tiles only in the opt-in pitch. */
@@ -56,6 +59,21 @@ async function loadDemoGeography(store: ReturnType<typeof makeKeplerStore>) {
   store.dispatch(wrapTo(MAP_ID, reorderLayer([...order, layerId])));
 }
 
+type MapLike = { once(type: string, listener: () => void): unknown; fire(type: string): unknown };
+const announced = new WeakSet<object>();
+
+/**
+ * kepler shows the basemap's credit ("© OpenStreetMap contributors") from what it collects on the
+ * map's `style.load`, but it misses the first one: the inline basemap style has loaded before kepler
+ * listens. Once a map first goes idle, announce its style again so kepler collects the credit.
+ */
+function announceStyleOnFirstIdle(ref: unknown) {
+  const map = (ref as { getMap?: () => MapLike } | null)?.getMap?.();
+  if (!map || announced.has(map)) return;
+  announced.add(map);
+  map.once("idle", () => map.fire("style.load"));
+}
+
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -81,10 +99,13 @@ export default function KeplerMap() {
   useKeplerBridge(store, MAP_ID);
   const [isFullscreen, setFullscreen] = useState(false);
   const fullscreen = useMemo(() => ({ isFullscreen, setFullscreen }), [isFullscreen]);
-  // fullscreen stretches the side panel over the whole map; kepler animates the width change
+  // fullscreen stretches the side panel over the whole map; kepler animates the width change.
+  // Never wider than the screen: on a phone the panel shrinks and leaves a strip of map for its
+  // close button.
+  const fullWidth = Math.max(0, width - 2 * SIDE_PANEL_MARGIN);
   const sidePanelWidth = isFullscreen
-    ? Math.max(SIDE_PANEL_WIDTH, width - 2 * SIDE_PANEL_MARGIN)
-    : SIDE_PANEL_WIDTH;
+    ? fullWidth
+    : Math.min(SIDE_PANEL_WIDTH, fullWidth - COLLAPSE_GUTTER);
 
   // swap the basemap whenever the app theme flips
   useEffect(() => {
@@ -123,7 +144,9 @@ export default function KeplerMap() {
                 version="Map"
                 sidePanelWidth={sidePanelWidth}
                 localeMessages={keplerLocaleMessages}
+                getMapboxRef={announceStyleOnFirstIdle}
               />
+              <TowerPulse store={store} mapId={MAP_ID} />
             </ChatFullscreenContext.Provider>
           </ChatProvider>
         </Provider>
