@@ -1,0 +1,77 @@
+[project]
+name = "menara"
+version = "0.1.0"
+description = "Backend workspace root for the synthetic-data Menara MCP servers (netops-mcp is standalone, with its own lock)."
+requires-python = ">=3.13"
+dependencies = ["menara-core"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "ruff>=0.11",
+    "mypy>=1.16",
+    "types-PyYAML>=6.0",
+    "care-mcp",
+    "drone-mcp",
+    "energy-mcp",
+    "enterprise-mcp",
+    "events-mcp",
+    "exposure-mcp",
+    "field-mcp",
+    "flood-mcp",
+    "grid-mcp",
+    "ontology-mcp",
+    "policy-mcp",
+    "ran-mcp",
+    "scam-mcp",
+    "sensors-mcp",
+    "sites-mcp",
+    "ticket-mcp",
+    "tower-mcp",
+    "twin-mcp",
+    "usage-mcp",
+    "user-mcp",
+    "weather-mcp",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["menara-core", "*-mcp"]
+exclude = ["netops-mcp"]
+
+[tool.uv.sources]
+menara-core = { workspace = true }
+care-mcp = { workspace = true }
+drone-mcp = { workspace = true }
+energy-mcp = { workspace = true }
+enterprise-mcp = { workspace = true }
+events-mcp = { workspace = true }
+exposure-mcp = { workspace = true }
+field-mcp = { workspace = true }
+flood-mcp = { workspace = true }
+grid-mcp = { workspace = true }
+ontology-mcp = { workspace = true }
+policy-mcp = { workspace = true }
+ran-mcp = { workspace = true }
+scam-mcp = { workspace = true }
+sensors-mcp = { workspace = true }
+sites-mcp = { workspace = true }
+ticket-mcp = { workspace = true }
+tower-mcp = { workspace = true }
+twin-mcp = { workspace = true }
+usage-mcp = { workspace = true }
+user-mcp = { workspace = true }
+weather-mcp = { workspace = true }
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["menara-core", "."]
+addopts = "--import-mode=importlib"

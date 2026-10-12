@@ -2,7 +2,7 @@
 
 Use cases for the Elevate map workspace (kepler.gl + AI assistant). Each one is a question
 a user asks in the chat. The assistant answers it by calling MINDS MCP tools (see
-`MINDS_MCP_TOOLS.md`) and drawing the result as one or more kepler.gl layers.
+`NETOPS_MCP_TOOLS.md`) and drawing the result as one or more kepler.gl layers.
 
 The list covers all 16 layer types in the
 [kepler.gl layer guide](https://docs.kepler.gl/docs/user-guides/c-types-of-layers).
