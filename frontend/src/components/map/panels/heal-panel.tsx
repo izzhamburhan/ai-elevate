@@ -119,7 +119,7 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 /** Self-heal: the flood story as a closed loop (detect to recover), run as a replay that a human approves step by step. */
-export function HealPanel() {
+export function HealPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
@@ -230,8 +230,13 @@ export function HealPanel() {
   const now = state && state.watched.length ? Math.max(...state.watched.map((t) => state.series[t].at(-1)?.prb ?? 0)) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-3 font-sans text-foreground">
-      <h2 className="truncate text-base font-bold tracking-tight">Self-heal</h2>
+    <div
+      className={cn(
+        "flex flex-col gap-3 font-sans text-foreground",
+        embedded ? "max-h-[40rem] overflow-y-auto rounded-xl border bg-card/40 p-3" : "min-h-0 flex-1 overflow-y-auto pb-3",
+      )}
+    >
+      <h2 className={cn("truncate font-bold tracking-tight", embedded ? "text-sm" : "text-base")}>Self-heal</h2>
       <p className="text-[12px] leading-5 text-muted-foreground">
         A flood cuts power to a tower. Watch the loop detect it, simulate a fix, ask a human, apply it, check the result and roll back if it fails.
         A scripted replay (no model key) drives the real MCP servers.

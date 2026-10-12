@@ -113,12 +113,12 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
 }
 
 /** Map & Area: pick a place and radius, see the towers, people and apps inside it, and follow one subscriber's trail. */
-export function AreaPanel() {
+export function AreaPanel({ initial, embedded = false }: { initial?: { lat: number; lng: number; radius_km: number; place?: string }; embedded?: boolean } = {}) {
   const store = useStore() as unknown as KeplerStore;
   const [place, setPlace] = useState(0);
-  const [lat, setLat] = useState(PRESETS[0].lat);
-  const [lng, setLng] = useState(PRESETS[0].lng);
-  const [radius, setRadius] = useState(PRESETS[0].radius);
+  const [lat, setLat] = useState(initial?.lat ?? PRESETS[0].lat);
+  const [lng, setLng] = useState(initial?.lng ?? PRESETS[0].lng);
+  const [radius, setRadius] = useState(initial?.radius_km ?? PRESETS[0].radius);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -312,14 +312,30 @@ export function AreaPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picking, store, radius]);
 
+  // as a chat card: show the area the agent asked for as soon as the card appears
+  useEffect(() => {
+    if (!initial) return;
+    const timer = setTimeout(() => void search({ lat: initial.lat, lng: initial.lng }), 0);
+    return () => clearTimeout(timer);
+    // once per mount: the card keeps its own state after that
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const counts = area ? { UP: 0, DEGRADED: 0, DOWN: 0, ...Object.fromEntries(Object.entries(Object.groupBy(area.towers, (t) => t.status)).map(([k, v]) => [k, v?.length ?? 0])) } : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-3 font-sans text-foreground">
-      <h2 className="truncate text-base font-bold tracking-tight">Map &amp; area</h2>
+    <div
+      className={cn(
+        "flex flex-col gap-3 font-sans text-foreground",
+        embedded ? "max-h-[34rem] overflow-y-auto rounded-xl border bg-card/40 p-3" : "min-h-0 flex-1 overflow-y-auto pb-3",
+      )}
+    >
+      <h2 className={cn("truncate font-bold tracking-tight", embedded ? "text-sm" : "text-base")}>
+        {embedded ? `Map & area${initial?.place ? `: ${initial.place}` : ""}` : "Map & area"}
+      </h2>
 
       <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
+        <div className={cn("flex gap-2", embedded && "hidden")}>
           <select
             value={place}
             onChange={(e) => {
@@ -362,7 +378,7 @@ export function AreaPanel() {
             <MousePointerClick className="size-4" />
           </Button>
         </div>
-        <div className="flex gap-2 text-[13px]">
+        <div className={cn("flex gap-2 text-[13px]", embedded && "hidden")}>
           <label className="flex flex-1 items-center gap-1.5 text-muted-foreground">
             Lat
             <input type="number" step="0.001" value={lat} onChange={(e) => setLat(Number(e.target.value))} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-foreground" />
@@ -372,6 +388,11 @@ export function AreaPanel() {
             <input type="number" step="0.001" value={lng} onChange={(e) => setLng(Number(e.target.value))} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-foreground" />
           </label>
         </div>
+        {embedded ? (
+          <Button variant={picking ? "default" : "outline"} size="sm" className="self-start" aria-pressed={picking} onClick={() => setPicking((on) => !on)}>
+            <MousePointerClick /> Pick another spot on the map
+          </Button>
+        ) : null}
         {picking ? <p className="text-[12px] text-primary">Click anywhere on the map to put the circle there.</p> : null}
         <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
           Radius

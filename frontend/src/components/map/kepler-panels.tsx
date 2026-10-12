@@ -9,19 +9,15 @@ import {
   SidePanelFactory,
   injectComponents,
 } from "@kepler.gl/components";
-import { ChevronLeft, HeartPulse, MapPinned, MessageSquare } from "lucide-react";
+import { ChevronLeft, MessageSquare } from "lucide-react";
 
 import { ChatHistoryMenu, NewChatButton } from "@/components/chat/chat-history-menu";
-import { AreaPanel } from "./panels/area-panel";
 import { AssistantPanel } from "./panels/assistant-panel";
-import { HealPanel } from "./panels/heal-panel";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
   en: {
     "sidebar.panels.assistant": "Assistant",
-    "sidebar.panels.area": "Map & area",
-    "sidebar.panels.heal": "Self-heal",
   },
 };
 
@@ -31,18 +27,6 @@ const customPanels = [
     label: "sidebar.panels.assistant",
     iconComponent: (props: { height?: string }) => <MessageSquare size={props.height ?? 18} />,
     component: AssistantPanel,
-  },
-  {
-    id: "area",
-    label: "sidebar.panels.area",
-    iconComponent: (props: { height?: string }) => <MapPinned size={props.height ?? 18} />,
-    component: AreaPanel,
-  },
-  {
-    id: "heal",
-    label: "sidebar.panels.heal",
-    iconComponent: (props: { height?: string }) => <HeartPulse size={props.height ?? 18} />,
-    component: HealPanel,
   },
 ];
 
@@ -57,16 +41,15 @@ function ElevateCustomPanelsFactory() {
 }
 
 /**
- * kepler appends custom panels after its own; move our tabs (Assistant, Map & area, Self-heal) to the front and
- * drop the hidden ones.
+ * kepler appends custom panels after its own; move the Assistant tab to the front and drop the
+ * hidden ones.
  */
 function ElevateSidePanelFactory(...deps: Parameters<typeof SidePanelFactory>) {
   const SidePanel = SidePanelFactory(...deps);
   const defaults = (SidePanel.defaultPanels ?? []).filter((p) => !HIDDEN_PANELS.has(p.id));
-  const ours = ["assistant", "area", "heal"];
   const panels = [
-    ...ours.flatMap((id) => defaults.filter((p) => p.id === id)),
-    ...defaults.filter((p) => !ours.includes(p.id)),
+    ...defaults.filter((p) => p.id === "assistant"),
+    ...defaults.filter((p) => p.id !== "assistant"),
   ];
 
   const ElevateSidePanel = (props: React.ComponentProps<typeof SidePanel>) => (
