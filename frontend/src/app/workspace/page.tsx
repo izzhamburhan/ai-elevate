@@ -1,7 +1,7 @@
 import { KeplerMapLoader } from "@/components/map/kepler-map-loader";
 import { TopBar } from "@/components/top-bar";
 
-export default function Home() {
+export default function WorkspacePage() {
   return (
     <div className="flex h-svh w-full flex-col overflow-hidden">
       <TopBar />

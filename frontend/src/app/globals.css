@@ -190,3 +190,209 @@
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+/*
+ * Marketing site (src/app/(marketing)): Ideogram-style art direction. Light editorial body,
+ * cinematic dark bands (`.mk-dark`), serif display type, lavender pill CTAs.
+ * Scoped to `.marketing` so the workspace theme is untouched. Components only use `mk-*`
+ * tokens, so wrapping any block in `.mk-dark` flips it to the dark palette.
+ */
+@theme inline {
+  --font-display: var(--font-mk-display);
+  --color-mk-bg: var(--mk-bg);
+  --color-mk-surface: var(--mk-surface);
+  --color-mk-raised: var(--mk-raised);
+  --color-mk-fg: var(--mk-fg);
+  --color-mk-muted: var(--mk-muted);
+  --color-mk-faint: var(--mk-faint);
+  --color-mk-line: var(--mk-line);
+  --color-mk-line-strong: var(--mk-line-strong);
+  --color-mk-brand: var(--mk-brand);
+  --color-mk-brand-fg: var(--mk-brand-fg);
+  --color-mk-on-fg: var(--mk-on-fg);
+  --color-mk-magenta: var(--mk-magenta);
+  --color-mk-blue: var(--mk-blue);
+  --color-mk-amber: var(--mk-amber);
+  --color-mk-teal: var(--mk-teal);
+  --color-mk-green: var(--mk-green);
+  --color-mk-red: var(--mk-red);
+  --color-mk-violet: var(--mk-violet);
+}
+
+/* Light (default). Accents are the darker, text-safe shades: all ≥ 4.5:1 on white. */
+.marketing {
+  --mk-bg: #ffffff;
+  --mk-surface: #f6f5f8;
+  --mk-raised: #ffffff;
+  --mk-fg: #1f1b2d;
+  --mk-muted: #59566a;
+  --mk-faint: #6b6879;
+  --mk-line: rgb(0 0 0 / 0.08);
+  --mk-line-strong: rgb(0 0 0 / 0.15);
+  --mk-brand: #bd9fff;
+  --mk-brand-fg: #1b1528;
+  --mk-magenta: #be185d;
+  --mk-blue: #2563eb;
+  --mk-amber: #b45309;
+  --mk-teal: #0f766e;
+  --mk-green: #15803d;
+  --mk-red: #c81e1e;
+  --mk-violet: #6d4aff;
+  /* Text on an ink (`bg-mk-fg`) pill. */
+  --mk-on-fg: #ffffff;
+  --ring: #6d4aff;
+  color-scheme: light;
+  background: var(--mk-bg);
+  color: var(--mk-fg);
+}
+
+/* Dark bands: hero, Self-heal, CTA, and the "screens" inside mock cards. */
+.marketing .mk-dark,
+.marketing.mk-dark {
+  --mk-bg: #14111d;
+  --mk-surface: #1c1927;
+  --mk-raised: #25212f;
+  --mk-fg: #fafafa;
+  --mk-muted: #b3b0bf;
+  --mk-faint: #8f8c9c;
+  --mk-line: rgb(255 255 255 / 0.1);
+  --mk-line-strong: rgb(255 255 255 / 0.2);
+  --mk-magenta: #ff5cb3;
+  --mk-blue: #6aa6ff;
+  --mk-amber: #ffb224;
+  --mk-teal: #19e6c1;
+  --mk-green: #3ddc84;
+  --mk-red: #ff6b78;
+  --mk-violet: #b79bff;
+  --mk-on-fg: #14111d;
+  --ring: #bd9fff;
+  color-scheme: dark;
+  color: var(--mk-fg);
+}
+
+/* Lavender band, like Ideogram's API section. Ink text; accents stay the light-theme shades. */
+.marketing .mk-lavender {
+  --mk-bg: #b7a1f7;
+  --mk-surface: rgb(255 255 255 / 0.22);
+  --mk-raised: rgb(255 255 255 / 0.35);
+  --mk-fg: #1f1b2d;
+  --mk-muted: #2f2942;
+  --mk-faint: #3d3654;
+  --mk-line: rgb(31 27 45 / 0.14);
+  --mk-line-strong: rgb(31 27 45 / 0.28);
+  --ring: #1f1b2d;
+  color: var(--mk-fg);
+}
+
+/* In-page links glide to their section; scroll-padding keeps section tops clear of the fixed 72px nav. */
+html:has(.marketing) {
+  background: #ffffff;
+  scroll-padding-top: 72px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.marketing) {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer base {
+  .marketing :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Film grain over cinematic art. Tiny inline SVG noise, blended so it reads on dark and light. */
+/* Needs a positioned host: pair with `relative` or `absolute`. */
+.mk-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.mk-grain-strong::after {
+  opacity: 0.4;
+}
+
+/* Slow push-in on the hero art, like a held camera shot. */
+@keyframes mk-drift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+.mk-drift {
+  animation: mk-drift 24s ease-in-out infinite alternate;
+  transform-origin: 55% 60%;
+}
+
+/* Fade/slide-up on scroll. Hidden only when scripts run and motion is welcome, so content never
+   stays invisible without JS. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .marketing [data-reveal] {
+    transition:
+      opacity 700ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .marketing [data-reveal]:not([data-shown]) {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes mk-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes mk-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes mk-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.mk-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgb(189 159 255 / 0.12) 50%, transparent 70%);
+  animation: mk-shimmer 4.5s ease-in-out infinite;
+}
+
+.mk-dash {
+  animation: mk-dash 1.6s linear infinite;
+}
+
+.mk-pulse {
+  animation: mk-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-shimmer::after,
+  .mk-dash,
+  .mk-pulse,
+  .mk-drift {
+    animation: none;
+  }
+}
