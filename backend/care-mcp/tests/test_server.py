@@ -18,10 +18,10 @@ def test_a_tool_returns_an_envelope(db_file: Path) -> None:
     assert payload["synthetic"] is True and payload["evidence"] and payload["data"]["affected_customers"] == 980
 
 
-def test_search_mode_lists_only_the_bm25_tools_and_proxies_calls(db_file: Path) -> None:
+def test_search_mode_lists_a_few_tools_directly_and_still_proxies_calls(db_file: Path) -> None:
     server = build_server(db_file, search=True)
     tools = asyncio.run(server.list_tools())
-    assert {t.name for t in tools} == {"care_search_tools", "care_call_tool"}
+    assert {t.name for t in tools} == {"care_get_impact", "care_draft_notice", "care_send_notice", "care_list_notices"}
     found: Any = asyncio.run(server.call_tool("care_search_tools", {"query": "draft a customer notice"})).structured_content
     assert found["result"][0]["name"] == "care_draft_notice"
     result: Any = asyncio.run(

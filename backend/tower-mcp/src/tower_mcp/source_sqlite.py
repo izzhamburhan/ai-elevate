@@ -89,11 +89,18 @@ class SqliteTowerSource:
         ]
 
     def latest_kpi(self, enodeb_name: str) -> KpiPoint | None:
+        now = self._now()
         row = self._conn.execute(
             "SELECT * FROM tower_kpi WHERE enodeb_name = ? AND t_min <= ? ORDER BY t_min DESC LIMIT 1",
-            (enodeb_name, self._now()),
+            (enodeb_name, now),
         ).fetchone()
-        return self._point(row) if row else None
+        point = self._point(row) if row else None
+        # a repair after the last sample (the seeded KPIs end at a fixed minute) still shows the tower carrying traffic
+        fixed = repairs.repaired_min(self._conn, enodeb_name, now)
+        if fixed is not None and (point is None or (point.t_min < fixed and point.prb_util == point.throughput_mbps == 0)):
+            prb, drop, thr = kpi_overlay.adjust(self._conn, enodeb_name, fixed, 0.0, 0.0, 0.0)
+            return KpiPoint(t_min=fixed, at=clock.iso_at(self._conn, fixed), prb_util=prb, drop_rate=drop, throughput_mbps=thr)
+        return point
 
     def kpi_window(self, enodeb_name: str, window_min: int) -> list[KpiPoint]:
         now = self._now()

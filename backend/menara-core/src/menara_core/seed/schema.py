@@ -5,6 +5,8 @@ Base tables are written once by the seed and are read-only for every MCP.
 
 from __future__ import annotations
 
+import sqlite3
+
 SCHEMA = """
 -- base (seed only)
 CREATE TABLE seed_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -173,7 +175,8 @@ CREATE TABLE ntt (
     resolved_by                  TEXT,
     resolution_note              TEXT,
     mcmc_closure_sent            INTEGER NOT NULL DEFAULT 0,
-    mcmc_comprehensive_required  INTEGER NOT NULL DEFAULT 0
+    mcmc_comprehensive_required  INTEGER NOT NULL DEFAULT 0,
+    fault_began_min              INTEGER  -- when the fault itself began, if known; outage time counts from it
 );
 
 CREATE TABLE ntt_ctt_link (
@@ -645,3 +648,19 @@ CREATE TABLE scam_signal (
     PRIMARY KEY (pattern_id, town, t_min)
 );
 """
+
+# Columns added after their table first shipped, as (table, column, definition). `upgrade` adds the missing ones to
+# an existing menara.db, so it keeps working without a re-seed.
+ADDED_COLUMNS = [("ntt", "fault_began_min", "INTEGER")]
+
+
+def upgrade(conn: sqlite3.Connection) -> list[str]:
+    """Add any ADDED_COLUMNS an older DB lacks. Needs a plain connection: the MCP connections refuse DDL."""
+    added: list[str] = []
+    for table, column, definition in ADDED_COLUMNS:
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if columns and column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            added.append(f"{table}.{column}")
+    conn.commit()
+    return added

@@ -6,7 +6,7 @@ export const MENARA_HOST = "http://127.0.0.1";
 
 export const MENARA_SERVERS = [
   { key: "tower", name: "Tower", port: 8101, description: "Cell tower status, KPIs, alarms and neighbours." },
-  { key: "ticket", name: "Ticket", port: 8102, description: "UniFi Mobile tickets, location clustering and notes." },
+  { key: "ticket", name: "Ticket", port: 8102, description: "UniFi Mobile tickets, network trouble tickets (NTT), location clustering and notes." },
   { key: "user", name: "User", port: 8103, description: "Subscriber serving cell and experience, PII masked." },
   { key: "ontology", name: "Ontology", port: 8104, description: "Linked objects for towers: blast radius, neighbours, upstream dependencies and incidents." },
   { key: "weather", name: "Weather", port: 8105, description: "Rainfall and lightning near a location." },

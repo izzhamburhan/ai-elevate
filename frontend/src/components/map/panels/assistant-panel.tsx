@@ -7,6 +7,7 @@ import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 
 import { ModelSelector } from "@/components/assistant-ui/elements/model-selector.aui";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
+import { WorkStep, WorkSummary } from "@/components/assistant-ui/elements/work-summary.aui";
 import { chatThreadListAdapter } from "@/components/chat/chat-history";
 import { ContextMeter } from "@/components/chat/context-meter";
 import { menaraToolkit } from "@/components/chat/menara-toolkit";
@@ -149,6 +150,9 @@ function ChatContextMeter() {
 
 const threadComponents = {
   Welcome: AssistantWelcome,
+  // fold each run of reasoning and tool calls into one "Worked for 23s · 4 steps" line
+  ChainOfThought: WorkSummary,
+  ToolFallback: WorkStep,
   ComposerActions,
   ComposerTrailing: ChatContextMeter,
 };

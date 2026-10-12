@@ -62,6 +62,15 @@ class TicketCluster(BaseModel):
     truncated: bool
 
 
+class TicketsNearTower(BaseModel):
+    enodeb_name: str
+    radius_km: float
+    count: int
+    tickets: list[ClusterTicket]
+    returned: int
+    truncated: bool
+
+
 class Resolution(BaseModel):
     resolved: list[str]
     already_resolved: list[str]
@@ -92,6 +101,7 @@ class McmcEligibility(BaseModel):
     can_send: bool
     can_send_display_message: str
     outage_duration_min: int
+    outage_started_at: str
     is_mcmc_closure_sent: bool
     is_mcmc_comprehensive_required: bool
     comprehensive_report_aging_days: int | None
@@ -108,6 +118,7 @@ class NttDetail(BaseModel):
     severity: str
     status: str
     summary: str
+    fault_began_at: str | None = None
     ctt_count: int
     linked_ctt_ids: list[str]
     notes: list[Note]

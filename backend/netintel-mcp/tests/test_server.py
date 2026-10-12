@@ -48,9 +48,9 @@ def test_bad_input_is_a_tool_error() -> None:
         asyncio.run(call())
 
 
-def test_search_mode_collapses_the_listing() -> None:
+def test_search_mode_lists_a_few_tools_directly() -> None:
     async def names() -> set[str]:
         async with Client(build_server(search=True)) as client:
             return {t.name for t in await client.list_tools()}
 
-    assert asyncio.run(names()) == {"netintel_search_tools", "netintel_call_tool"}
+    assert asyncio.run(names()) == TOOLS

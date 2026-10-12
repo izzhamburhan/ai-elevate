@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from collections import Counter
+from datetime import datetime
 
 from menara_core import clock
 from menara_core.envelope import Envelope, wrap
@@ -27,6 +29,7 @@ from ticket_mcp.models import (
     Resolution,
     TicketCluster,
     TicketDetail,
+    TicketsNearTower,
 )
 
 SOURCE = "ticket-mcp"
@@ -35,6 +38,7 @@ MAX_NOTE_CHARS = 1000
 MAX_LIMIT = 500
 MAX_RESOLVE = 200
 MAX_NTT_SUMMARY_CHARS = 500
+NEAR_TOWER_KM = 3.0  # roughly one tower's coverage area
 VALID_FAULT_TYPES = frozenset({"POWER", "FLOOD", "FIBER", "RAN", "HARDWARE", "OTHER"})
 VALID_SEVERITIES = frozenset({"CRITICAL", "MAJOR", "MINOR"})
 VALID_NTT_STATUSES = frozenset({"IN_PROGRESS", "RESOLVED", "CLOSED", "CANCELLED"})
@@ -178,6 +182,73 @@ def cluster_by_location(
     )
 
 
+def _scenario_min(conn: sqlite3.Connection, stamp: str) -> int:
+    """Scenario minute of an ISO timestamp (one without a zone is read in the scenario's zone)."""
+    start = datetime.fromisoformat(clock.iso_at(conn, 0))
+    try:
+        at = datetime.fromisoformat(stamp.strip())
+    except ValueError as error:
+        raise InvalidInputError(f"since must be an ISO timestamp, got {stamp!r}") from error
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=start.tzinfo)
+    return math.floor((at - start).total_seconds() / 60)
+
+
+def open_near_tower(
+    conn: sqlite3.Connection,
+    enodeb_name: str,
+    radius_km: float = NEAR_TOWER_KM,
+    since: str | None = None,
+    limit: int = 200,
+) -> Envelope[TicketsNearTower]:
+    """Tickets that are still open, raised by now within radius_km of a tower (and at or after `since`, for example
+    when the fault began): the customers an outage there reaches."""
+    name = enodeb_name.strip().upper()
+    tower = conn.execute("SELECT enodeb_name, lat, lng FROM tower WHERE enodeb_name = ?", (name,)).fetchone()
+    if tower is None:
+        raise NotFoundError(f"Tower {name} not found")
+    if not 0.1 <= radius_km <= 50:
+        raise InvalidInputError("radius_km must be between 0.1 and 50")
+    if not 1 <= limit <= MAX_LIMIT:
+        raise InvalidInputError(f"limit must be between 1 and {MAX_LIMIT}")
+    earliest = _scenario_min(conn, since) if since else -(10**9)  # no lower bound
+
+    min_lat, min_lng, max_lat, max_lng = bbox_around(tower["lat"], tower["lng"], radius_km)
+    members: list[tuple[float, sqlite3.Row]] = []
+    for row in conn.execute(
+        "SELECT * FROM ticket WHERE created_min BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? "
+        "ORDER BY created_min, ticket_id",
+        (earliest, clock.now_min(conn), min_lat, max_lat, min_lng, max_lng),
+    ):
+        distance = haversine_km(tower["lat"], tower["lng"], row["lat"], row["lng"])
+        if distance <= radius_km and _effective_status(conn, row) != "RESOLVED":
+            members.append((distance, row))
+
+    shown = [
+        ClusterTicket(
+            ticket_id=row["ticket_id"],
+            created_at=clock.iso_at(conn, row["created_min"]),
+            category=row["category"],
+            status=_effective_status(conn, row),
+            location_text=row["location_text"],
+            lat=row["lat"],
+            lng=row["lng"],
+            distance_km=round(distance, 2),
+        )
+        for distance, row in members[:limit]
+    ]
+    data = TicketsNearTower(
+        enodeb_name=name,
+        radius_km=radius_km,
+        count=len(members),
+        tickets=shown,
+        returned=len(shown),
+        truncated=len(members) > limit,
+    )
+    warnings = [f"Showing {limit} of {len(members)} tickets; count is the full total"] if data.truncated else []
+    return wrap(conn, source=SOURCE, tool="ticket_list_open_near_tower", data=data, ref=name, warnings=warnings)
+
+
 def add_note(
     conn: sqlite3.Connection, ticket_id: str, text: str, author: str = "agent"
 ) -> Envelope[NoteAdded]:
@@ -282,6 +353,7 @@ def _build_ntt_detail(conn: sqlite3.Connection, row: sqlite3.Row) -> NttDetail:
         severity=row["severity"],
         status=row["status"],
         summary=row["summary"],
+        fault_began_at=None if row["fault_began_min"] is None else clock.iso_at(conn, row["fault_began_min"]),
         ctt_count=len(linked),
         linked_ctt_ids=linked,
         notes=notes,
@@ -310,6 +382,7 @@ def create_ntt(
     severity: str,
     summary: str,
     ctt_ticket_ids: list[str] | None = None,
+    fault_began_at: str | None = None,
 ) -> Envelope[NttDetail]:
     ne_id = network_element_id.strip().upper()
     if not ne_id or len(ne_id) > 60:
@@ -324,14 +397,17 @@ def create_ntt(
     if len(summ) < 5 or len(summ) > MAX_NTT_SUMMARY_CHARS:
         raise InvalidInputError(f"summary must be 5-{MAX_NTT_SUMMARY_CHARS} characters")
 
+    now, stamp = clock.now_min(conn), clock.as_of(conn)
+    began = _scenario_min(conn, fault_began_at) if fault_began_at else None
+    if began is not None and began > now:
+        raise InvalidInputError("fault_began_at must not be after the current scenario time")
+
     _check_element(conn, ne_id)
     ctts_to_link: list[str] = []
     if ctt_ticket_ids:
         for tid in ctt_ticket_ids:
             row = _visible_ticket(conn, tid)
             ctts_to_link.append(row["ticket_id"])
-
-    now, stamp = clock.now_min(conn), clock.as_of(conn)
 
     existing = conn.execute(
         "SELECT * FROM ntt WHERE network_element_id = ? AND status = 'IN_PROGRESS' ORDER BY seq DESC LIMIT 1",
@@ -353,6 +429,8 @@ def create_ntt(
             warnings.append(f"Severity raised from {existing['severity']} to {sev}.")
         elif sev != existing["severity"]:
             warnings.append(f"severity {sev} was ignored: the existing NTT is {existing['severity']}.")
+        if began is not None and (existing["fault_began_min"] is None or began < existing["fault_began_min"]):
+            conn.execute("UPDATE ntt SET fault_began_min = ? WHERE ntt_id = ?", (began, ntt_id))
         for tid in ctts_to_link:
             conn.execute(
                 "INSERT OR IGNORE INTO ntt_ctt_link VALUES (?, ?, ?, ?)",
@@ -363,9 +441,9 @@ def create_ntt(
         return wrap(conn, source=SOURCE, tool="ticket_create_ntt", data=detail, ref=ntt_id, warnings=warnings)
 
     cursor = conn.execute(
-        "INSERT INTO ntt (created_min, created_at, network_element_id, fault_type, severity, status, summary) "
-        "VALUES (?, ?, ?, ?, ?, 'IN_PROGRESS', ?)",
-        (now, stamp, ne_id, ft, sev, summ),
+        "INSERT INTO ntt (created_min, created_at, network_element_id, fault_type, severity, status, summary, "
+        "fault_began_min) VALUES (?, ?, ?, ?, ?, 'IN_PROGRESS', ?, ?)",
+        (now, stamp, ne_id, ft, sev, summ, began),
     )
     seq = int(cursor.lastrowid or 0)
     ntt_id = _format_ntt_id(seq)
@@ -497,11 +575,12 @@ def unlink_ctt(
 
 
 def _evaluate_mcmc_eligibility(conn: sqlite3.Connection, row: sqlite3.Row) -> McmcEligibility:
-    created_min = int(row["created_min"])
+    # the outage counts from when the fault began when that is known, else from when the NTT was raised
+    started = int(row["fault_began_min"] if row["fault_began_min"] is not None else row["created_min"])
     resolved_min = int(row["resolved_min"]) if row["resolved_min"] is not None else None
     current_min = clock.now_min(conn)
 
-    duration = (resolved_min - created_min) if resolved_min is not None else (current_min - created_min)
+    duration = (resolved_min - started) if resolved_min is not None else (current_min - started)
     duration = max(0, duration)
 
     reasons: list[str] = []
@@ -529,6 +608,7 @@ def _evaluate_mcmc_eligibility(conn: sqlite3.Connection, row: sqlite3.Row) -> Mc
         can_send=can_send,
         can_send_display_message=display_msg,
         outage_duration_min=duration,
+        outage_started_at=clock.iso_at(conn, started),
         is_mcmc_closure_sent=is_closure_sent,
         is_mcmc_comprehensive_required=is_comp_req,
         comprehensive_report_aging_days=comp_aging_days,

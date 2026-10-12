@@ -42,7 +42,7 @@ export function useMapDraw() {
       for (const layer of state.layers) if (ours(layer.dataId)) run("remove_layer", { layerId: layer.id });
       for (const dataset of state.datasets) if (ours(dataset.id)) run("remove_dataset", { dataId: dataset.id });
     };
-    const addLines = async (dataId: string, label: string, rows: unknown[], color: string, thickness: number) => {
+    const addLines = async (dataId: string, label: string, rows: unknown[], color: string, thickness: number, opacity = 0.9) => {
       if (!rows.length) return;
       await run("load_data", { rows, label, dataId, centerMap: false, autoCreateLayers: false });
       await run("add_layer", {
@@ -51,7 +51,7 @@ export function useMapDraw() {
         label,
         columns: { lat0: "lat0", lng0: "lng0", lat1: "lat1", lng1: "lng1" },
         color,
-        opacity: 0.9,
+        opacity,
         visConfig: { thickness },
       });
     };

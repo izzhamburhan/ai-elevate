@@ -12,6 +12,7 @@ def test_server_registers_its_tools(db_file: Path) -> None:
     assert {t.name for t in tools} == {
         "ticket_get_ticket",
         "ticket_cluster_by_location",
+        "ticket_list_open_near_tower",
         "ticket_add_note",
         "ticket_resolve",
         "ticket_create_ntt",

@@ -23,7 +23,7 @@ const STAGES: { id: Stage; title: string }[] = [
 
 type RunEvent =
   | { type: "stage"; step: number | null; stage: Stage; attempt: number; label: string; blocked?: boolean }
-  | { type: "approval"; approvalId: string; summary: string }
+  | { type: "approval"; approvalId: string; summary: string; action?: string; targets?: string[]; purpose?: "cover" | "shed" }
   | { type: "final"; status: "done" | "stopped" | "cancelled" | "error"; text: string };
 type EventsReply = { runId: string | null; status: string; events: RunEvent[]; next: number; awaitingApproval?: boolean };
 type Point = { t_min: number; prb: number };
@@ -49,7 +49,8 @@ const MAP_COLORS = {
   hot: "#f97316",
   ok: TOWER_STATUS_COLOR.UP,
   tilted: "#a855f7",
-  link: "#f59e0b",
+  // neutral, so a line never reads as a load or status colour
+  proposed: "#94a3b8",
 };
 const towerColor = (status: string) => (status === "UP" ? MAP_COLORS.ok : status === "DEGRADED" ? MAP_COLORS.degraded : MAP_COLORS.failed);
 
@@ -163,7 +164,7 @@ export function HealPanel({ runId }: { runId?: string }) {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
-  const [approval, setApproval] = useState<{ approvalId: string; summary: string } | null>(null);
+  const [approval, setApproval] = useState<{ approvalId: string; summary: string; action?: string; targets?: string[] } | null>(null);
   const [state, setState] = useState<HealState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -194,7 +195,8 @@ export function HealPanel({ runId }: { runId?: string }) {
       setStatus(reply.status);
       if (reply.events.length) setEvents((prev) => [...prev, ...reply.events]);
       const pending = [...reply.events].reverse().find((e) => e.type === "approval");
-      if (reply.awaitingApproval && pending?.type === "approval") setApproval({ approvalId: pending.approvalId, summary: pending.summary });
+      if (reply.awaitingApproval && pending?.type === "approval")
+        setApproval({ approvalId: pending.approvalId, summary: pending.summary, action: pending.action, targets: pending.targets });
       else if (!reply.awaitingApproval) setApproval(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -256,25 +258,41 @@ export function HealPanel({ runId }: { runId?: string }) {
     return () => window.removeEventListener(FLOATING_EVENT, onOpen);
   }, [floatingId]);
 
-  // draw the incident on the map when what it shows changes
+  // what the latest neighbour tilt is for, and the neighbours a pending tilt would move
+  const purpose = events.reduce<"cover" | "shed" | undefined>((last, e) => (e.type === "approval" && e.purpose ? e.purpose : last), undefined);
+  const proposedKey = approval?.action === "ran_tilt_cells" ? (approval.targets ?? []).join(",") : "";
+
+  // draw the incident on the map when what it shows changes; lines join the failed tower only to the neighbours a
+  // tilt proposes (faint) or has moved (re-tilted purple), so they show the fix, not every neighbour
   useEffect(() => {
     if (!owns || !open || !state?.map.towers.length) return;
     const towers = state.map.towers;
-    const signature = JSON.stringify(towers.map((t) => [t.name, t.status, t.tilted, (t.prb_now ?? 0) >= state.threshold]));
+    const signature = JSON.stringify([towers.map((t) => [t.name, t.status, t.tilted, (t.prb_now ?? 0) >= state.threshold]), proposedKey, purpose]);
     if (signature === drawn.current) return;
     drawn.current = signature;
     const failed = towers.find((t) => t.role === "failed");
     const neighbours = towers.filter((t) => t.role === "neighbour");
     const row = (t: MapTower) => ({ name: t.name, lat: t.lat, lng: t.lng, status: t.status, prb_now: t.prb_now ?? "" });
+    const proposed = proposedKey ? proposedKey.split(",") : [];
     void (async () => {
       draw.removeOurs(["heal_"]);
       if (failed) {
+        const cover = purpose === "cover";
+        const link = (n: MapTower) => ({ lat0: failed.lat, lng0: failed.lng, lat1: n.lat, lng1: n.lng, tower: n.name });
         await draw.addLines(
-          "heal_links",
-          "Load moved to neighbours",
-          neighbours.map((n) => ({ lat0: failed.lat, lng0: failed.lng, lat1: n.lat, lng1: n.lng })),
-          MAP_COLORS.link,
-          2,
+          "heal_links_proposed",
+          `Proposed: ${cover ? "cover" : "re-tilt for"} ${failed.name}`,
+          neighbours.filter((n) => !n.tilted && proposed.includes(n.name)).map(link),
+          MAP_COLORS.proposed,
+          1.5,
+          0.6,
+        );
+        await draw.addLines(
+          "heal_links_tilted",
+          cover ? `Covering ${failed.name}` : `Re-tilted for ${failed.name}`,
+          neighbours.filter((n) => n.tilted).map(link),
+          MAP_COLORS.tilted,
+          3,
         );
       }
       const up = neighbours.filter((n) => n.status === "UP");
@@ -294,7 +312,7 @@ export function HealPanel({ runId }: { runId?: string }) {
         draw.fit([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]);
       }
     })();
-  }, [owns, open, state, draw]);
+  }, [owns, open, state, draw, proposedKey, purpose]);
 
   const decide = async (approve: boolean) => {
     if (!currentId) return;
@@ -479,6 +497,15 @@ export function HealPanel({ runId }: { runId?: string }) {
                     ].map(([label, color]) => (
                       <span key={label} className="flex items-center gap-1">
                         <span className="size-2 rounded-full" style={{ background: color }} />
+                        {label}
+                      </span>
+                    ))}
+                    {[
+                      ["Proposed tilt", MAP_COLORS.proposed],
+                      ["Tilt applied", MAP_COLORS.tilted],
+                    ].map(([label, color]) => (
+                      <span key={label} className="flex items-center gap-1">
+                        <span className="h-0.5 w-3 rounded-full" style={{ background: color }} />
                         {label}
                       </span>
                     ))}

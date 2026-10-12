@@ -14,8 +14,10 @@ from typing import Any
 
 import httpx
 import pytest
+from menara_core import clock
 from menara_core.db import connect
 from menara_core.errors import InvalidInputError, NotFoundError, SourceUnavailableError
+from menara_core.testing import build_test_db
 from tower_mcp import tools
 from tower_mcp.server import build_server, main
 from tower_mcp.source import TowerSource
@@ -237,3 +239,28 @@ def test_the_http_source_needs_an_api_url(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("MENARA_TOWER_API_URL", raising=False)
     with pytest.raises(SystemExit):
         main(["--source", "http"])
+
+def test_a_tower_repaired_after_the_last_kpi_sample_reports_traffic_at_the_repair(tmp_path: Path) -> None:
+    db = build_test_db(tmp_path)
+    writer = connect(db, owned_tables={"tower_state", "tower_kpi", "field_job", "scenario_state"})
+    name = writer.execute(
+        "SELECT enodeb_name FROM tower WHERE enodeb_name NOT LIKE 'KKRI-%' ORDER BY enodeb_name LIMIT 1"
+    ).fetchone()["enodeb_name"]
+    # down from minute 400 (dead samples from then on), a crew dispatched at 420 finishes at 420 + 10 + 90
+    writer.execute("INSERT INTO tower_state VALUES (?, 400, 'DOWN', 90, 1)", (name,))
+    writer.execute("UPDATE tower_kpi SET prb_util = 0, drop_rate = 0, throughput_mbps = 0 WHERE enodeb_name = ? AND t_min >= 400", (name,))
+    tech = writer.execute("SELECT tech_id FROM technician LIMIT 1").fetchone()["tech_id"]
+    writer.execute(
+        "INSERT INTO field_job (job_id, tech_id, enodeb_name, task, skill, dispatched_min, dispatched_at, eta_min, access, "
+        "approved_by, reason) VALUES ('JOB-T1', ?, ?, 'fix it', 'RAN', 420, 'x', 10, 'ROAD', 'test', 'test')",
+        (tech, name),
+    )
+    writer.commit()
+    source = SqliteTowerSource(connect(db))
+
+    clock.set_now(writer, 500)  # crew still on site: the tower is down and carries nothing
+    before = source.latest_kpi(name)
+    assert before is not None and before.t_min == 480 and before.prb_util == 0.0
+    clock.set_now(writer, 530)  # repaired at 520, after the last seeded sample (480)
+    after = source.latest_kpi(name)
+    assert after is not None and after.t_min == 520 and after.prb_util > 0 and after.throughput_mbps > 0

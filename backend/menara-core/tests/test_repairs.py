@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from menara_core import clock, repairs
+from menara_core import clock, kpi_overlay, repairs
 from menara_core.db import connect
 from menara_core.testing import build_test_db
 
@@ -99,3 +99,24 @@ def test_repair_before_the_fault_does_not_count(conn: sqlite3.Connection) -> Non
     _reset(conn, name, now - 60)
     _fault(conn, name, now, "CELL_HUNG")
     assert repairs.status(conn, name, now, "DEGRADED") == "DEGRADED"
+
+def test_a_repaired_tower_carries_traffic_again(conn: sqlite3.Connection) -> None:
+    now = clock.now_min(conn)
+    name = _up_tower(conn, now)
+    _fault(conn, name, now, "LINK_DOWN")
+    _job(conn, name, now, eta=40)
+    done = now + 40 + repairs.FIELD_WORK_MIN
+    # before the crew finishes, an outage sample stays an outage sample
+    assert repairs.restored_kpi(conn, name, done - 1, 0.0, 0.0, 0.0) == (0.0, 0.0, 0.0)
+    prb, _, thr = repairs.restored_kpi(conn, name, done, 0.0, 0.0, 0.0)
+    assert prb > 0 and thr > 0
+    assert kpi_overlay.adjust(conn, name, done, 0.0, 0.0, 0.0) == repairs.restored_kpi(conn, name, done, 0.0, 0.0, 0.0)
+    # a sample that has traffic is left alone
+    assert repairs.restored_kpi(conn, name, done, 40.0, 0.5, 30.0) == (40.0, 0.5, 30.0)
+
+
+def test_an_unrepaired_dead_tower_stays_dead(conn: sqlite3.Connection) -> None:
+    now = clock.now_min(conn)
+    name = _up_tower(conn, now)
+    _fault(conn, name, now, "LINK_DOWN")
+    assert repairs.restored_kpi(conn, name, now, 0.0, 0.0, 0.0) == (0.0, 0.0, 0.0)
