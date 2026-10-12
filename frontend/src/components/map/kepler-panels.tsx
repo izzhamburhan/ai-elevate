@@ -5,7 +5,6 @@ import {
   CollapseButtonFactory,
   CustomPanelsFactory,
   MapControlFactory,
-  MapPopoverFactory,
   PanelHeaderFactory,
   PanelToggleFactory,
   SidePanelFactory,
@@ -21,6 +20,7 @@ import { PanelResizeHandle } from "./panel-resize-handle";
 import { AssistantPanel } from "./panels/assistant-panel";
 import { WeatherPanel } from "./panels/weather-panel";
 import { HermesPanel } from "./panels/hermes-panel";
+import { towerPopoverFactories } from "./tower-popover";
 
 /** Labels for the custom side-panel tabs (kepler runs tab labels through react-intl). */
 export const keplerLocaleMessages = {
@@ -200,20 +200,6 @@ function ElevateMapControlFactory(...deps: Parameters<typeof MapControlFactory>)
 }
 ElevateMapControlFactory.deps = MapControlFactory.deps;
 
-/** Suppresses hover tooltips for decorative boundary outlines and layers with no configured fields. */
-function ElevateMapPopoverFactory(...deps: Parameters<typeof MapPopoverFactory>) {
-  const MapPopover = MapPopoverFactory(...deps);
-  return function ElevateMapPopover(props: React.ComponentProps<typeof MapPopover>) {
-    const dataId = props.layerHoverProp?.layer?.config?.dataId;
-    const fields = props.layerHoverProp?.fieldsToShow;
-    if (dataId?.startsWith("area_boundary") || (Array.isArray(fields) && fields.length === 0)) {
-      return null;
-    }
-    return <MapPopover {...props} />;
-  };
-}
-ElevateMapPopoverFactory.deps = MapPopoverFactory.deps;
-
 // Order matters: injecting the side panel re-provides its deps (incl. the default
 // PanelHeader, PanelToggle, CollapseButton, CustomPanels and AddDataButton factories), so
 // their replacements must be injected after it.
@@ -225,5 +211,6 @@ export const KeplerGl = injectComponents([
   [CustomPanelsFactory, ElevateCustomPanelsFactory],
   [AddDataButtonFactory, ElevateAddDataButtonFactory],
   [MapControlFactory, ElevateMapControlFactory],
-  [MapPopoverFactory, ElevateMapPopoverFactory],
+  // the tower tooltip's actions (Heal this tower, Add to chat); hides tooltips with nothing to show
+  ...towerPopoverFactories,
 ] as never);

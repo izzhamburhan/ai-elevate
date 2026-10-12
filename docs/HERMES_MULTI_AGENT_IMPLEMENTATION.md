@@ -233,6 +233,14 @@ Defects found and fixed during this qualification:
 
 Earlier Codex-era records (`cea3022d…` and before) and run `aaaa1bef…` (pre-fix, 574.5 s) are not counted. The intermediate run `20484165…` passed but preceded fixes 3, 5 and 7 and is also not counted.
 
+## Integration with main — 2026-10-12
+
+`origin/main` (Orders 4/5 netintel/mlpredict, unified workspace design, subscriber trail playback) was merged into this branch without conflicts. The only shared file, `kepler-panels.tsx`, keeps main's glass fullscreen layer and phone collapse button alongside the Agents tab. The new MCPs use ports 8125/8126 and do not touch 8011 or Hermes code.
+
+Integration qualification found one pre-existing defect: after about ten investigations every private memory reached the native 2,200-character limit and `memory_saved` became false (reported as a warning, not hidden). The worker now rotates the oldest investigation references until the new one fits.
+
+On the integrated code: backend 38/38, Weather 46/46 + 8, Hermes frontend 6/6, lint clean, `next build` (including TypeScript) passes; all four profiles ready; orchestrated investigation `81c713c5…` PASSED through the Next.js proxy in 361.7 s (Forecast and Engineer with all their tools, 177 points, no ungrounded claims, `memory_saved=true` for every agent); a browser-submitted Business run `41b21b45…` mapped 50 sites on Kepler; memory and sessions persisted across the container recreation.
+
 ## Known limitations and troubleshooting
 
 - An orchestrated investigation takes about 6 minutes locally (Forecast ~1.6–1.9 min, Engineer ~1.8–2.3 min, Orchestrator reasoning ~2 min); one investigation runs at a time and later submissions queue. Timeouts and incomplete specialist tasks are reported explicitly.
@@ -243,7 +251,7 @@ Earlier Codex-era records (`cea3022d…` and before) and run `aaaa1bef…` (pre-
 - Optional POI/boundary source files are absent; business geographic recommendations currently rely on available synthetic telecom inventory. No measured crowd, event attendance, revenue, footfall model or outage classifier is supplied.
 - Weather is cached historical replay. Forecast interval calibration, operational live meteorological validation and full browser airgap behavior retain the existing documented limitations.
 - The 65536 context is verified through the narrow native-Ollama adapter and increases native model memory to about 7.60 GiB outside Docker. The original compatible route ignored context options; that compatibility issue is resolved without reconfiguring or restarting the host daemon. Only the required text/function-tool protocol is implemented; multimodal input is unsupported, and streaming waits for a completed native reply.
-- Private profile memories are concise and bounded; they are not a factual database. Shared findings use explicit task results. One writer per profile prevents concurrent native memory/session conflicts.
+- Private profile memories are concise and bounded (2,200 native characters, about ten investigation references); when full, the worker removes the oldest `Investigation …` reference through the native memory tool before adding the new one. Seed identity notes are never rotated. They are not a factual database. Shared findings use explicit task results. One writer per profile prevents concurrent native memory/session conflicts.
 - The local API is deliberately localhost-bound; production authentication, internet deployment, retries, scaling and full security hardening are outside Order 2.
 - Build/setup can require internet for pinned source/dependencies and existing frontend fonts. Cached runtime investigation calls use local Ollama/MCP; normal basemaps can still use external providers.
 - If readiness is false, inspect `./scripts/dev.sh logs`, the reported service, and configured Docker-to-host URLs. Do not reset source databases or terminate protected listeners. If port 8011 is occupied, use a verified available port in this project's `.env` and matching Next.js server URL.

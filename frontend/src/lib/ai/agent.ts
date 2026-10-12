@@ -73,6 +73,12 @@ predictive ML tools (predict_area_footfall, rank_business_locations, predict_sit
 forecast_network_congestion, detect_network_anomalies); give the numbers with their uncertainty and say they come
 from local models trained on synthetic data.`,
   },
+  {
+    tools: ["show_chart"],
+    card: true,
+    text: `When an analysis compares several items, shows a trend or a breakdown, add a chart with show_chart, using only
+numbers from tool results.`,
+  },
 ];
 
 const CARD_RULE = `Answer with cards where there is one. A card already draws its result on the map, so do not redraw it or

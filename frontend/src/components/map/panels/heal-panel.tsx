@@ -238,6 +238,16 @@ export function HealPanel({ runId }: { runId?: string }) {
     }, 0);
     return () => clearTimeout(timer);
   }, [owns, status, floatingId]);
+  // approvals are only decided in the floating card, so each new one brings it back
+  const approvalId = approval?.approvalId;
+  useEffect(() => {
+    if (!owns || !approvalId) return;
+    const timer = setTimeout(() => {
+      setOpen(true);
+      window.dispatchEvent(new CustomEvent(FLOATING_EVENT, { detail: floatingId }));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [owns, approvalId, floatingId]);
   useEffect(() => {
     const onOpen = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== floatingId) setOpen(false);
@@ -322,7 +332,18 @@ export function HealPanel({ runId }: { runId?: string }) {
       </h2>
 
       {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[12px] text-destructive">{error}</p> : null}
-      {owns && approval ? <ApprovalBox summary={approval.summary} onDecide={decide} /> : null}
+      {/* the decision itself lives in the floating card only; the chat just points to it */}
+      {owns && approval ? (
+        <div className="flex items-center gap-2 rounded-xl border border-amber/30 bg-amber/10 p-2.5 text-[12px]">
+          <ShieldAlert className="size-3.5 shrink-0 text-amber" />
+          <span className="min-w-0 flex-1">Your approval is needed in the self-heal card on the map.</span>
+          {open ? null : (
+            <Button size="sm" variant="outline" onClick={showAgain}>
+              Open card
+            </Button>
+          )}
+        </div>
+      ) : null}
 
       <ol className="flex flex-col gap-1">
         {STAGES.map((s) => {

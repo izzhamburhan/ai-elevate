@@ -110,6 +110,16 @@ def execute(request: dict) -> dict:
         # Save a reference through the native store; factual records stay in their MCP services.
         reference = f"Investigation {request['investigation_id']} task {request['task_id']}: {agent_id}; native turn {'completed' if success else 'incomplete'}. The investigation ledger alone records final validation, partial failures and MCP facts."
         memory_result = json.loads(memory_tool(action="add", target="memory", content=reference, store=agent._memory_store))
+        # The native store is bounded; rotate out the oldest investigation references (never the seed notes).
+        for _ in range(3):
+            if memory_result.get("success"):
+                break
+            entries = (profile / "memories" / "MEMORY.md").read_text().split("§")
+            oldest = next((entry.strip() for entry in entries if entry.strip().startswith("Investigation ")), None)
+            if not oldest:
+                break
+            memory_tool(action="remove", target="memory", old_text=oldest[:80], store=agent._memory_store)
+            memory_result = json.loads(memory_tool(action="add", target="memory", content=reference, store=agent._memory_store))
         summary, narration_trimmed = final_report(str(result.get("final_response") or ""))
         return {"completed": success, "summary": summary, "error": result.get("error"),
                 "runtime": {"name": "hermes-agent", "version": HERMES_VERSION, "revision": HERMES_REVISION,
